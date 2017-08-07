@@ -1,0 +1,17 @@
+[package]
+name = "handler"
+version = "0.1.0"
+authors = ["trionprog <trionprog@gmail.com>"]
+
+[dependencies]
+nes = { path = "../../rust/nes" }
+log = "0.3.8"
+nanomsg = "0.6.2"
+config = { path = "../../rust/config" }
+common_types = { path = "../common/common_types" }
+common_address = { path = "../common/common_address" }
+common_messages = { path = "../common/common_messages" }
+common_ipc_channel = {path = "../common/common_ipc_channel" }
+object_pool = { path = "../../rust/object_pool" }
+serde = "1.0.9"
+common_sender = { path = "../common/common_sender" }
