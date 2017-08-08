@@ -38,8 +38,9 @@ pub enum HandlerCommand {
     Task,
     SenderTransactionFailed(sender::ServerType,ServerID,sender::Error,sender::BasicState),
     Familiarity(Box<(Vec<(MessageServerID,String)>)>),
-    ConnectionEstablished(ServerTypeServerID,ServerID),
-    EstablishingConnection(ServerType,ServerID),
+    AcceptConnection(ServerType,ServerID,String,ServerID),
+    ConnectionAccepted(ServerType,ServerID,ServerID),
+    Connected(ServerType,ServerID),
 }
 
 pub struct Handler {
@@ -101,7 +102,7 @@ impl Handler {
                 panic!("Can not send TasksQueue");
             }
 
-            let sender = match Sender::new_arc(&argument.balancer_address, argument.server_id, handler_sender){
+            let sender = match Sender::new_arc(&argument.balancer_address, &argument.ipc_listener_address, argument.server_id, handler_sender){
                 Ok(sender) => sender,
                 Err(error) => {
                     use std::io::Write;
@@ -251,29 +252,12 @@ impl Handler {
                     }
                     HandlerCommand::Familiarity(box (handlers)) =>
                         self.familiarize(&handlers)?,
-                    HandlerCommand::ConnectionEstablished(server_type,server_id,set_server_id) => {
-                        match self.state {
-                            State::Familiarity( familiarity_list ) => {
-                                match server_type {
-                                    ServerType::Handler => {
-                                        match self.sender.connected_handler(server_id,set_server_id) {
-                                            Ok(_) => {familiarity_list.handlers.remove(server_id)},
-                                            Err(sender::Error::Poisoned(error_info)) => return Err(Error::Poisoned(error_info)),
-                                            Err(sender::Error::BrockenChannel(error_info)) => return Err(Error::BrockenChannel(error_info)),
-                                            Err(e) => {println!("{}",e);},
-                                        }
-                                    },
-                                }
-
-                                if familiarity_list.is_empty() {
-                                    self.state=State::Working;
-                                    try!(self.sender.send_to_balancer(&HandlerToBalancer::FamiliarityFinished), Error::BalancerCrash, ThreadSource::Handler);
-                                }
-                            },
-                            State::Shutdown => {},//Send Abschied message?!
-                            _ => {}
-                        }
-                    },
+                    HandlerCommand::AcceptConnection(server_type,server_id,address,balancer_server_id) =>
+                        self.accept_connection(server_type,server_id,address,balancer_server_id)?,
+                    HandlerCommand::ConnectionAccepted(server_type,server_id,set_server_id) =>
+                        self.connection_accepted(server_type,server_id,set_server_id)?,
+                    HandlerCommand::Connected(server_type,server_id) => {
+                        self.connected(server_type,server_id)?,
                     _ => panic!("Unexpected type of HandlerCommand"),
                 }
             }
@@ -311,7 +295,73 @@ impl Handler {
             handlers:wait_handlers
         };
 
-        self.state=State::Familiarity(Box::new(familiarity_list));
+        if familiarity_list.is_empty() {
+            self.state=State::Working;
+            try!(self.sender.send_to_balancer(&HandlerToBalancer::FamiliarityFinished), Error::BalancerCrash, ThreadSource::Handler);
+        }else{
+            self.state=State::Familiarity(Box::new(familiarity_list));
+        }
+
+        ok!()
+    }
+
+    fn accept_connection(&mut self, server_type:ServerType, server_id:ServerID, address:String, balancer_server_id: ServerID) -> result![Error] {
+        match self.state {
+            State::Initialization | State::Familiarity(_) | State::Working => {
+                match server_type {
+                    ServerType::Handler => {
+                        println!("{} \"{}\" Accepted Connected {}",&server_id,&address,&balancer_server_id);
+                        do_server_transaction![ self.sender.accept_connection_from_handler(server_id,address,balancer_server_id) ];
+                    },
+                }
+            },
+            //State::Shutdown => {},//TODO:Send Abschied message?!
+            _ => {}
+        }
+
+        ok!()
+    }
+
+    fn connection_accepted(&mut self, server_type:ServerType, server_id:ServerID, set_server_id:ServerID) -> result![Error] {
+        match self.state {
+            State::Familiarity( familiarity_list ) => {
+                match server_type {
+                    ServerType::Handler => {
+                        match self.sender.connection_to_handler_accepted(server_id,set_server_id) {
+                            Ok(_) => {familiarity_list.handlers.remove(server_id)},
+                            Err(sender::Error::Poisoned(error_info)) => return Err(Error::Poisoned(error_info)),
+                            Err(sender::Error::BrockenChannel(error_info)) => return Err(Error::BrockenChannel(error_info)),
+                            Err(e) => {println!("{}",e);},
+                        }
+                    },
+                }
+
+                if familiarity_list.is_empty() {
+                    self.state=State::Working;
+                    try!(self.sender.send_to_balancer(&HandlerToBalancer::FamiliarityFinished), Error::BalancerCrash, ThreadSource::Handler);
+                }
+            },
+            State::Shutdown => {},//Send Abschied message?!
+            //Hot Connection
+            _ => {}
+        }
+
+        ok!()
+    }
+
+    fn connected(&mut self,server_type:ServerType, server_id:ServerID) -> result![Error] {
+        match self.state {
+            State::Initialization | State::Familiarity(_) | State::Working => {
+                match server_type {
+                    ServerType::Handler => {
+                        println!("{} \"{}\" Connected {}",&server_id,&address,&balancer_server_id);
+                        do_server_transaction![ self.sender.connected_to_handler(server_id) ];
+                    },
+                }
+            },
+            //State::Shutdown => {},//TODO:Send Abschied message?!
+            _ => {}
+        }
 
         ok!()
     }

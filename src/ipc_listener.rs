@@ -284,12 +284,13 @@ impl IpcListener {
                             let message:HandlerToHandler = common_messages::read_message( &buffer[..] );
 
                             match message {
-                                HandlerToHandler::ConnectionEstablished(set_server_id) =>
-                                    channel_send!(self.handler_sender, HandlerCommand::ConnectionEstablished(ServerType::Handler, server_id, set_server_id.into())),
-                                HandlerToHandler::EstablishingConnection => {
-                                    channel_send!(self.handler_sender, HandlerCommand::EstablishingConnection(ServerType::Handler, server_id)),
+                                HandlerToHandler::Connect(server_id,address,balancer_server_id) =>
+                                    channel_send!(self.handler_sender, HandlerCommand::AcceptConnection(ServerType::Handler, server_id, address, balancer_server_id.into())),
+                                HandlerToHandler::ConnectionAccepted(set_server_id) => {
+                                    channel_send!(self.handler_sender, HandlerCommand::ConnectionAccepted(ServerType::Handler, server_id, set_server_id)),
                                 },
                                 HandlerToHandler::Connected => {
+                                    channel_send!(self.handler_sender, HandlerCommand::Connected(ServerType::Handler, server_id)),
                                 },
                             }
                         },

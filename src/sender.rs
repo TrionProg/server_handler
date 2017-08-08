@@ -28,6 +28,7 @@ pub struct Sender {
     pub balancer_server_id:ServerID,
     pub handler:Mutex< Storage<HandlerServer,HandlerToHandler> >,
     pub handler_sender:Mutex<HandlerSender>,
+    pub handler_address:String,
 }
 
 impl SenderTrait for Sender {
@@ -35,12 +36,13 @@ impl SenderTrait for Sender {
     type HandlerMessage=HandlerCommand;
     type H=HandlerServer; type MToH=HandlerToHandler;
 
-    fn new(balancer_sender:IpcChannel,balancer_server_id:ServerID,handler_sender:HandlerSender) -> Self {
+    fn new(handler_address:String,balancer_sender:IpcChannel,balancer_server_id:ServerID,handler_sender:HandlerSender) -> Self {
         Sender {
             balancer_sender:Mutex::new(balancer_sender),
             balancer_server_id,
             handler:Mutex::new( Storage::new(ServerType::Handler) ),
             handler_sender:Mutex::new(handler_sender)
+            handler_address
         }
     }
 
@@ -54,6 +56,10 @@ impl SenderTrait for Sender {
 
     fn get_handler_sender(&self) -> &Mutex<HandlerSender> {
         &self.handler_sender
+    }
+
+    fn get_address(&self) -> &String {
+        &self.handler_address
     }
 
     fn create_sender_transaction_failed_message(server_type:ServerType, server_id:ServerID, error:Error, old_basic_state:BasicState) -> Self::HandlerMessage {
