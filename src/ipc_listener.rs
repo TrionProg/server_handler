@@ -19,6 +19,7 @@ use ::ArcArgument;
 use ::ArcTasksQueue;
 use ::ArcSender;
 use ::ThreadSource;
+use ::ServerType;
 
 const BUFFER_SIZE:usize = 32*1024;
 const READ_TIMEOUT:isize = 50;
@@ -267,14 +268,29 @@ impl IpcListener {
 
                             match message {
                                 BalancerToHandler::EstablishingConnection => {
-                                    try!(self.sender.send_to_balancer(&HandlerToBalancer::ConnectionEstablished), Error::BalancerCrash, ThreadSource::Handler);
+                                    try!(self.sender.send_to_balancer(&HandlerToBalancer::ConnectionEstablished), Error::BalancerCrash, ThreadSource::IpcListener);
                                 },
+                                BalancerToHandler::Familiarity(handler_servers) =>
+                                    channel_send!(self.handler_sender, HandlerCommand::Familiarity(Box::new((handler_servers))) ),
                                 BalancerToHandler::Shutdown => {
                                     channel_send!(self.handler_sender, HandlerCommand::ShutdownReceived);
                                     while_is_activity=true;
                                     wait_activity_timeout=SystemTime::now()+Duration::new(2,0);
                                 },
                                 _ => {},
+                            }
+                        },
+                        common_messages::Type::HandlerToHandler => {
+                            let message:HandlerToHandler = common_messages::read_message( &buffer[..] );
+
+                            match message {
+                                HandlerToHandler::ConnectionEstablished(set_server_id) =>
+                                    channel_send!(self.handler_sender, HandlerCommand::ConnectionEstablished(ServerType::Handler, server_id, set_server_id.into())),
+                                HandlerToHandler::EstablishingConnection => {
+                                    channel_send!(self.handler_sender, HandlerCommand::EstablishingConnection(ServerType::Handler, server_id)),
+                                },
+                                HandlerToHandler::Connected => {
+                                },
                             }
                         },
                         _ => unreachable!()

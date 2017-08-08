@@ -13,7 +13,7 @@ extern crate object_pool;
 extern crate nes;
 
 pub use common_address::Address;
-pub use common_types::ServerID;
+pub use common_types::{ServerType,ServerID};
 
 pub mod argument;
 pub use argument::{Argument,ArcArgument};

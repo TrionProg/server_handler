@@ -48,7 +48,7 @@ impl SenderTrait for Sender {
         &self.balancer_sender
     }
 
-    fn get_handler(&self) -> &Mutex<Storage<HandlerServer,HandlerToHandler>> {
+    fn get_handlers(&self) -> &Mutex<Storage<HandlerServer,HandlerToHandler>> {
         &self.handler
     }
 

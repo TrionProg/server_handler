@@ -6,6 +6,7 @@ use nes::{ErrorInfo,ErrorInfoTrait};
 
 use std::io::Write;
 use std::thread::JoinHandle;
+use std::collections::HashSet;
 
 use ipc_listener;
 use ipc_listener::{IpcListenerSender, IpcListenerCommand};
@@ -16,9 +17,11 @@ use ::ArcArgument;
 use ::{TasksQueue, ArcTasksQueue};
 use ::{Sender, ArcSender};
 use ::ThreadSource;
+use ::ServerType;
 use ::ServerID;
 
 use common_messages::{HandlerToBalancer};
+use common_messages::MessageServerID;
 
 pub type HandlerSender = std::sync::mpsc::Sender<HandlerCommand>;
 pub type HandlerReceiver = std::sync::mpsc::Receiver<HandlerCommand>;
@@ -34,13 +37,24 @@ pub enum HandlerCommand {
     IpcListenerFinished,
     Task,
     SenderTransactionFailed(sender::ServerType,ServerID,sender::Error,sender::BasicState),
+    Familiarity(Box<(Vec<(MessageServerID,String)>)>),
+    ConnectionEstablished(ServerTypeServerID,ServerID),
+    EstablishingConnection(ServerType,ServerID),
 }
 
 pub struct Handler {
     handler_receiver:HandlerReceiver,
     ipc_listener_sender:IpcListenerSender,
     tasks_queue:ArcTasksQueue,
-    sender:ArcSender
+    sender:ArcSender,
+    state:State,
+}
+
+pub enum State {
+    Initialization,
+    Familiarity(Box<FamiliarityList>),
+    Working,
+    Shutdown,
 }
 
 define_error!( Error,
@@ -56,6 +70,21 @@ define_error!( Error,
     Other(message:String) =>
         "{}"
 );
+
+macro_rules! do_sender_transaction {
+    [$operation:expr] => {
+        match $operation {
+            Ok(_) => {},
+            Err(sender::Error::Poisoned(error_info)) => return Err(Error::Poisoned(error_info)),
+            Err(sender::Error::BrockenChannel(error_info)) => return Err(Error::BrockenChannel(error_info)),
+            Err(e) => {println!("{}",e);},
+        }
+    };
+}
+
+pub struct FamiliarityList {
+    handlers:HashSet<ServerID>,
+}
 
 impl Handler {
     pub fn start(ipc_listener_sender:IpcListenerSender, argument: ArcArgument) -> JoinHandle<()>{
@@ -156,7 +185,8 @@ impl Handler {
             handler_receiver,
             ipc_listener_sender,
             tasks_queue,
-            sender
+            sender,
+            state:State::Initialization,
         };
 
         ok!( handler )
@@ -219,6 +249,31 @@ impl Handler {
                     HandlerCommand::Task => {
                         wait_tasks=false;
                     }
+                    HandlerCommand::Familiarity(box (handlers)) =>
+                        self.familiarize(&handlers)?,
+                    HandlerCommand::ConnectionEstablished(server_type,server_id,set_server_id) => {
+                        match self.state {
+                            State::Familiarity( familiarity_list ) => {
+                                match server_type {
+                                    ServerType::Handler => {
+                                        match self.sender.connected_handler(server_id,set_server_id) {
+                                            Ok(_) => {familiarity_list.handlers.remove(server_id)},
+                                            Err(sender::Error::Poisoned(error_info)) => return Err(Error::Poisoned(error_info)),
+                                            Err(sender::Error::BrockenChannel(error_info)) => return Err(Error::BrockenChannel(error_info)),
+                                            Err(e) => {println!("{}",e);},
+                                        }
+                                    },
+                                }
+
+                                if familiarity_list.is_empty() {
+                                    self.state=State::Working;
+                                    try!(self.sender.send_to_balancer(&HandlerToBalancer::FamiliarityFinished), Error::BalancerCrash, ThreadSource::Handler);
+                                }
+                            },
+                            State::Shutdown => {},//Send Abschied message?!
+                            _ => {}
+                        }
+                    },
                     _ => panic!("Unexpected type of HandlerCommand"),
                 }
             }
@@ -239,6 +294,28 @@ impl Handler {
             _ => panic!("Can not recv IpcListenerFinished"),
         }
     }
+
+    fn familiarize(&mut self,handlers:&Vec<(MessageServerID,String)>) -> result![Error]{
+        let mut wait_handlers=HashSet::new();
+
+        for &(ref server_id,ref address) in handlers.iter() {
+            match self.servers.connect_to_handler(address, server_id.clone()) {
+                Ok(server_id) => {wait_handler_servers.insert(server_id.into());},
+                Err(sender::Error::Poisoned(error_info)) => return Err(Error::Poisoned(error_info)),
+                Err(sender::Error::BrockenChannel(error_info)) => return Err(Error::BrockenChannel(error_info)),
+                Err(e) => {println!("{}",e);},
+            }
+        }
+
+        let familiarity_list = FamiliarityList {
+            handlers:wait_handlers
+        };
+
+        self.state=State::Familiarity(Box::new(familiarity_list));
+
+        ok!()
+    }
+
 }
 
 /*
@@ -255,3 +332,9 @@ impl From<sender::Error> for Error{
     }
 }
 */
+
+impl FamiliarityList {
+    fn is_empty(&mut self) -> bool {
+        self.handlers.len()==0
+    }
+}
