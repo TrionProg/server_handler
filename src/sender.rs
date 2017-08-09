@@ -41,7 +41,7 @@ impl SenderTrait for Sender {
             balancer_sender:Mutex::new(balancer_sender),
             balancer_server_id,
             handler:Mutex::new( Storage::new(ServerType::Handler) ),
-            handler_sender:Mutex::new(handler_sender)
+            handler_sender:Mutex::new(handler_sender),
             handler_address
         }
     }

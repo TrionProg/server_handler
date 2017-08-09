@@ -37,7 +37,7 @@ pub enum HandlerCommand {
     IpcListenerFinished,
     Task,
     SenderTransactionFailed(sender::ServerType,ServerID,sender::Error,sender::BasicState),
-    Familiarity(Box<(Vec<(MessageServerID,String)>)>),
+    Familiarity(Box<(Vec<(MessageServerID,String)>,usize)>),
     AcceptConnection(ServerType,ServerID,String,ServerID),
     ConnectionAccepted(ServerType,ServerID,ServerID),
     Connected(ServerType,ServerID),
@@ -66,7 +66,7 @@ define_error!( Error,
 
     BrockenChannel() =>
         "Channel for Handler is broken",
-    MutexPoisoned() =>
+    Poisoned() =>
         "Handler thread has poisoned mutex",
     Other(message:String) =>
         "{}"
@@ -250,13 +250,13 @@ impl Handler {
                     HandlerCommand::Task => {
                         wait_tasks=false;
                     }
-                    HandlerCommand::Familiarity(box (handlers)) =>
-                        self.familiarize(&handlers)?,
+                    HandlerCommand::Familiarity(familiarity_servers) =>
+                        self.familiarize(&(*familiarity_servers).0)?,
                     HandlerCommand::AcceptConnection(server_type,server_id,address,balancer_server_id) =>
                         self.accept_connection(server_type,server_id,address,balancer_server_id)?,
                     HandlerCommand::ConnectionAccepted(server_type,server_id,set_server_id) =>
                         self.connection_accepted(server_type,server_id,set_server_id)?,
-                    HandlerCommand::Connected(server_type,server_id) => {
+                    HandlerCommand::Connected(server_type,server_id) =>
                         self.connected(server_type,server_id)?,
                     _ => panic!("Unexpected type of HandlerCommand"),
                 }
@@ -283,8 +283,8 @@ impl Handler {
         let mut wait_handlers=HashSet::new();
 
         for &(ref server_id,ref address) in handlers.iter() {
-            match self.servers.connect_to_handler(address, server_id.clone()) {
-                Ok(server_id) => {wait_handler_servers.insert(server_id.into());},
+            match self.sender.connect_to_handler(address, server_id.clone().into()) {
+                Ok(server_id) => {wait_handlers.insert(server_id.into());},
                 Err(sender::Error::Poisoned(error_info)) => return Err(Error::Poisoned(error_info)),
                 Err(sender::Error::BrockenChannel(error_info)) => return Err(Error::BrockenChannel(error_info)),
                 Err(e) => {println!("{}",e);},
@@ -311,7 +311,7 @@ impl Handler {
                 match server_type {
                     ServerType::Handler => {
                         println!("{} \"{}\" Accepted Connected {}",&server_id,&address,&balancer_server_id);
-                        do_server_transaction![ self.sender.accept_connection_from_handler(server_id,address,balancer_server_id) ];
+                        do_sender_transaction![ self.sender.accept_connection_from_handler(server_id,address,balancer_server_id) ];
                     },
                 }
             },
@@ -323,12 +323,12 @@ impl Handler {
     }
 
     fn connection_accepted(&mut self, server_type:ServerType, server_id:ServerID, set_server_id:ServerID) -> result![Error] {
-        match self.state {
-            State::Familiarity( familiarity_list ) => {
+        let connected_to_all = match self.state {
+            State::Familiarity(ref mut familiarity_list ) => {
                 match server_type {
                     ServerType::Handler => {
                         match self.sender.connection_to_handler_accepted(server_id,set_server_id) {
-                            Ok(_) => {familiarity_list.handlers.remove(server_id)},
+                            Ok(_) => {familiarity_list.handlers.remove(&server_id);},
                             Err(sender::Error::Poisoned(error_info)) => return Err(Error::Poisoned(error_info)),
                             Err(sender::Error::BrockenChannel(error_info)) => return Err(Error::BrockenChannel(error_info)),
                             Err(e) => {println!("{}",e);},
@@ -336,15 +336,18 @@ impl Handler {
                     },
                 }
 
-                if familiarity_list.is_empty() {
-                    self.state=State::Working;
-                    try!(self.sender.send_to_balancer(&HandlerToBalancer::FamiliarityFinished), Error::BalancerCrash, ThreadSource::Handler);
-                }
+                familiarity_list.is_empty()
             },
-            State::Shutdown => {},//Send Abschied message?!
+            State::Shutdown => {false},//Send Abschied message?!
             //Hot Connection
-            _ => {}
+            _ => {false}
+        };
+
+        if connected_to_all {
+            self.state=State::Working;
+            try!(self.sender.send_to_balancer(&HandlerToBalancer::FamiliarityFinished), Error::BalancerCrash, ThreadSource::Handler);
         }
+
 
         ok!()
     }
@@ -354,8 +357,8 @@ impl Handler {
             State::Initialization | State::Familiarity(_) | State::Working => {
                 match server_type {
                     ServerType::Handler => {
-                        println!("{} \"{}\" Connected {}",&server_id,&address,&balancer_server_id);
-                        do_server_transaction![ self.sender.connected_to_handler(server_id) ];
+                        println!("{} Connected",&server_id);
+                        do_sender_transaction![ self.sender.connected_to_handler(server_id) ];
                     },
                 }
             },
@@ -384,7 +387,7 @@ impl From<sender::Error> for Error{
 */
 
 impl FamiliarityList {
-    fn is_empty(&mut self) -> bool {
+    fn is_empty(&self) -> bool {
         self.handlers.len()==0
     }
 }

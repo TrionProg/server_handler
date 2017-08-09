@@ -20,6 +20,7 @@ use ::ArcTasksQueue;
 use ::ArcSender;
 use ::ThreadSource;
 use ::ServerType;
+use ::ServerID;
 
 const BUFFER_SIZE:usize = 32*1024;
 const READ_TIMEOUT:isize = 50;
@@ -265,14 +266,16 @@ impl IpcListener {
                     match message_type {
                         common_messages::Type::BalancerToHandler => {
                             let message:BalancerToHandler = common_messages::read_message( &buffer[..] );
+                            println!("BalancerToHandler message {}",server_id);
 
                             match message {
                                 BalancerToHandler::EstablishingConnection => {
                                     try!(self.sender.send_to_balancer(&HandlerToBalancer::ConnectionEstablished), Error::BalancerCrash, ThreadSource::IpcListener);
                                 },
-                                BalancerToHandler::Familiarity(handler_servers) =>
-                                    channel_send!(self.handler_sender, HandlerCommand::Familiarity(Box::new((handler_servers))) ),
+                                BalancerToHandler::Familiarity{handlers} =>
+                                    channel_send!(self.handler_sender, HandlerCommand::Familiarity(Box::new((handlers,0))) ),
                                 BalancerToHandler::Shutdown => {
+                                    println!("shutdown");
                                     channel_send!(self.handler_sender, HandlerCommand::ShutdownReceived);
                                     while_is_activity=true;
                                     wait_activity_timeout=SystemTime::now()+Duration::new(2,0);
@@ -281,24 +284,13 @@ impl IpcListener {
                             }
                         },
                         common_messages::Type::HandlerToHandler => {
-                            let message:HandlerToHandler = common_messages::read_message( &buffer[..] );
+                            let message = common_messages::read_message( &buffer[..] );
+                            println!("HandlerToHandler message {}",server_id);
 
-                            match message {
-                                HandlerToHandler::Connect(server_id,address,balancer_server_id) =>
-                                    channel_send!(self.handler_sender, HandlerCommand::AcceptConnection(ServerType::Handler, server_id, address, balancer_server_id.into())),
-                                HandlerToHandler::ConnectionAccepted(set_server_id) => {
-                                    channel_send!(self.handler_sender, HandlerCommand::ConnectionAccepted(ServerType::Handler, server_id, set_server_id)),
-                                },
-                                HandlerToHandler::Connected => {
-                                    channel_send!(self.handler_sender, HandlerCommand::Connected(ServerType::Handler, server_id)),
-                                },
-                            }
+                            self.handle_handler_message(server_id, time, number, message)?;
                         },
                         _ => unreachable!()
                     }
-
-
-                    println!("is message");
                 },
                 Err(e) => {
                     if e.kind() == std::io::ErrorKind::TimedOut {
@@ -328,6 +320,19 @@ impl IpcListener {
             Ok( IpcListenerCommand::HandlerFinished ) => {},
             _ => panic!("Can not recv HandlerFinished"),
         }
+    }
+
+    fn handle_handler_message(&mut self, server_id:ServerID, time:u64, number:u32, message:HandlerToHandler) -> result![Error] {
+        match message {
+            HandlerToHandler::Connect(address,balancer_server_id) =>
+                channel_send!(self.handler_sender, HandlerCommand::AcceptConnection(ServerType::Handler, server_id, address, balancer_server_id.into())),
+            HandlerToHandler::ConnectionAccepted(set_server_id) =>
+                channel_send!(self.handler_sender, HandlerCommand::ConnectionAccepted(ServerType::Handler, server_id, set_server_id.into())),
+            HandlerToHandler::Connected =>
+                channel_send!(self.handler_sender, HandlerCommand::Connected(ServerType::Handler, server_id)),
+        }
+
+        ok!()
     }
 }
 
