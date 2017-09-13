@@ -79,7 +79,7 @@ impl IpcListener {
     pub fn start(argument: ArcArgument) -> (JoinHandle<()>,IpcListenerSender) {
         let (ipc_listener_sender, ipc_listener_receiver) = std::sync::mpsc::channel();
 
-        let join_handle=std::thread::spawn(move|| {
+        let join_handle=std::thread::Builder::new().name("Handler.IpcListener".to_string()).spawn(move|| {
             let handler_sender = match ipc_listener_receiver.recv() {
                 Ok( IpcListenerCommand::HandlerSender(handler_sender) ) => handler_sender,
                 _ => panic!("Can not recv HandlerSender"),
@@ -154,7 +154,9 @@ impl IpcListener {
                     }
                 }
             }
-        });
+
+            println!("handler ipc finish");
+        }).unwrap();
 
         (join_handle,ipc_listener_sender)
     }
@@ -275,7 +277,7 @@ impl IpcListener {
                                 BalancerToHandler::Familiarity{handlers} =>
                                     channel_send!(self.handler_sender, HandlerCommand::Familiarity(Box::new((handlers,0))) ),
                                 BalancerToHandler::Shutdown => {
-                                    println!("shutdown");
+                                    println!("hhh shutdown");
                                     channel_send!(self.handler_sender, HandlerCommand::ShutdownReceived);
                                     while_is_activity=true;
                                     wait_activity_timeout=SystemTime::now()+Duration::new(2,0);

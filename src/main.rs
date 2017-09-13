@@ -1,3 +1,5 @@
+#[macro_use]
+extern crate log;
 extern crate nanomsg;
 extern crate config;
 extern crate common_address;
@@ -5,6 +7,8 @@ extern crate common_types;
 extern crate common_messages;
 extern crate common_ipc_channel;
 extern crate common_sender;
+extern crate common_logger;
+pub use common_logger::{Logger,ArcLogger};
 
 #[macro_use]
 extern crate object_pool;
@@ -50,7 +54,12 @@ impl std::fmt::Display for ThreadSource{
 
 fn main() {
     let argument=Argument::read();
-
+/*
+    let logger = match Logger::new_arc(&properties.logger_properties.address,ServerType::Balancer,ServerID::new(0,1)) {
+        Ok( logger ) => logger,
+        Err( e ) => panic!("Can not create logger:{}",e),
+    };
+*/
     let (ipc_listener_join_handler,ipc_listener_sender) = IpcListener::start(argument.clone());
     let handler_join_handler = Handler::start(ipc_listener_sender,argument);
 

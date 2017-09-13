@@ -91,7 +91,7 @@ impl Handler {
     pub fn start(ipc_listener_sender:IpcListenerSender, argument: ArcArgument) -> JoinHandle<()>{
         let (handler_sender, handler_receiver) = std::sync::mpsc::channel();
 
-        let join_handle=std::thread::spawn(move|| {
+        let join_handle=std::thread::Builder::new().name("Handler.Handler".to_string()).spawn(move|| {
             if ipc_listener_sender.send(IpcListenerCommand::HandlerSender(handler_sender.clone())).is_err() {
                 panic!("Can not send HandlerSender");
             }
@@ -171,7 +171,7 @@ impl Handler {
                     }
                 }
             }
-        });
+        }).unwrap();
 
         join_handle
     }
@@ -242,8 +242,8 @@ impl Handler {
                 };
 
                 match command {
-                    HandlerCommand::Shutdown => return ok!(),
-                    HandlerCommand::ShutdownReceived => {},
+                    HandlerCommand::Shutdown => {println!("handler shutdown"); return ok!();},
+                    HandlerCommand::ShutdownReceived => {println!("recv shutdown");},
                     //Setup Crash
                     HandlerCommand::IpcListenerThreadCrash(error) => return err!(Error::IpcListenerThreadCrash, error, ThreadSource::IpcListener),
                     HandlerCommand::BalancerCrash(error) => return err!(Error::BalancerCrash, error, ThreadSource::IpcListener),
@@ -295,7 +295,7 @@ impl Handler {
             handlers:wait_handlers
         };
 
-        if familiarity_list.is_empty() {
+        if familiarity_list.is_empty() { //Сервер один
             self.state=State::Working;
             try!(self.sender.send_to_balancer(&HandlerToBalancer::FamiliarityFinished), Error::BalancerCrash, ThreadSource::Handler);
         }else{
@@ -313,6 +313,7 @@ impl Handler {
                         println!("{} \"{}\" Accepted Connected {}",&server_id,&address,&balancer_server_id);
                         do_sender_transaction![ self.sender.accept_connection_from_handler(server_id,address,balancer_server_id) ];
                     },
+                    _ => unreachable!()
                 }
             },
             //State::Shutdown => {},//TODO:Send Abschied message?!
@@ -322,6 +323,10 @@ impl Handler {
         ok!()
     }
 
+    ///Эта функция вызывается при получении сообщения ConnectionAccepted от другого сервера.
+    /// * При состоянии State::Familiarity она вызывает connection_to_handler_accepted sender-а, которая,
+    ///и, если список серверов, к которым нужно подключиться, становится пустым, то переводит сервер в состояние Working и
+    ///отправляет Balancer-у сообщение FamiliarityFinished
     fn connection_accepted(&mut self, server_type:ServerType, server_id:ServerID, set_server_id:ServerID) -> result![Error] {
         let connected_to_all = match self.state {
             State::Familiarity(ref mut familiarity_list ) => {
@@ -334,6 +339,7 @@ impl Handler {
                             Err(e) => {println!("{}",e);},
                         }
                     },
+                    _ => unreachable!()
                 }
 
                 familiarity_list.is_empty()
@@ -357,9 +363,9 @@ impl Handler {
             State::Initialization | State::Familiarity(_) | State::Working => {
                 match server_type {
                     ServerType::Handler => {
-                        println!("{} Connected",&server_id);
                         do_sender_transaction![ self.sender.connected_to_handler(server_id) ];
                     },
+                    _ => unreachable!()
                 }
             },
             //State::Shutdown => {},//TODO:Send Abschied message?!

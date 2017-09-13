@@ -15,3 +15,4 @@ common_ipc_channel = {path = "../common/common_ipc_channel" }
 object_pool = { path = "../../rust/object_pool" }
 serde = "1.0.9"
 common_sender = { path = "../common/common_sender" }
+common_logger = { path = "../common/common_logger" }
