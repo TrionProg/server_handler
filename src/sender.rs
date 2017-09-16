@@ -14,7 +14,6 @@ use std::sync::{Arc,Mutex,RwLock};
 use common_ipc_channel::IpcChannel;
 use handler::{HandlerSender, HandlerCommand};
 
-use ::ArcArgument;
 use ::Address;
 use ::ServerID;
 

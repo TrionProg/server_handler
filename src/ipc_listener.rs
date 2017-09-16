@@ -15,7 +15,7 @@ use common_sender::SenderTrait;
 use common_messages::{HandlerToBalancer,BalancerToHandler};
 use common_messages::{HandlerToHandler};
 
-use ::ArcArgument;
+use ::ArcProperties;
 use ::ArcTasksQueue;
 use ::ArcSender;
 use ::ThreadSource;
@@ -72,28 +72,25 @@ define_error!( Error,
         "{}"
 );
 
-//impl_from_error!(nanomsg::result::Error => Error);
-//impl_from_error!(std::io::Error => Error);
-
 impl IpcListener {
-    pub fn start(argument: ArcArgument) -> (JoinHandle<()>,IpcListenerSender) {
+    pub fn start(properties: ArcProperties) -> (JoinHandle<()>,IpcListenerSender) {
         let (ipc_listener_sender, ipc_listener_receiver) = std::sync::mpsc::channel();
 
         let join_handle=std::thread::Builder::new().name("Handler.IpcListener".to_string()).spawn(move|| {
             let handler_sender = match ipc_listener_receiver.recv() {
                 Ok( IpcListenerCommand::HandlerSender(handler_sender) ) => handler_sender,
-                _ => panic!("Can not recv HandlerSender"),
+                _ => recv_error!(IpcListenerCommand::HandlerSender),
             };
 
             let tasks_queue = match ipc_listener_receiver.recv() {
                 Ok( IpcListenerCommand::TasksQueue(tasks_queue) ) => tasks_queue,
-                _ => panic!("Can not recv TasksQueue"),
+                _ => recv_error!(IpcListenerCommand::TasksQueue),
             };
 
             let sender = match ipc_listener_receiver.recv() {
                 Ok( IpcListenerCommand::Sender(sender) ) => sender,
                 Ok( IpcListenerCommand::SenderCreationError ) => return,
-                _ => panic!("Can not recv Sender"),
+                _ => recv_error!(IpcListenerCommand::Sender),
             };
 
             let mut ipc_listener = match IpcListener::setup(
@@ -101,16 +98,14 @@ impl IpcListener {
                 handler_sender.clone(),
                 tasks_queue,
                 sender,
-                argument
+                properties
             ) {
                 Ok( ipc_listener ) => ipc_listener,
                 Err( error ) => {
-                    writeln!(std::io::stderr(), "IpcListener Error: {}",error);
+                    error!("IpcListener Error: {}",error);
                     //TODO:It cause panic of Handler because it can not send HandlerIsReady, because this thread has crashed
 
-                    if handler_sender.send( HandlerCommand::IpcListenerSetupError(Box::new(error)) ).is_err() {
-                        panic!("Can not send IpcListenerSetupError");
-                    }
+                    try_send![handler_sender,  HandlerCommand::IpcListenerSetupError(Box::new(error))];
 
                     return;
                 }
@@ -125,13 +120,11 @@ impl IpcListener {
                     ipc_listener.synchronize_finish();
                 },
                 Err(error) => {
-                    writeln!(std::io::stderr(), "IpcListener Error: {}",error);
+                    error!("IpcListener Error: {}",error);
 
                     match error {
                         Error::NanomsgError(_,_) => {
-                            if ipc_listener.handler_sender.send( HandlerCommand::IpcListenerThreadCrash(Box::new(error)) ).is_err() {
-                                panic!("Can not send IpcListenerThreadCrash");
-                            }
+                            try_send![ipc_listener.handler_sender, HandlerCommand::IpcListenerThreadCrash(Box::new(error))];
                             //NOTE:Close the socket?!
                         },
                         Error::HandlerThreadCrash(_,_,source) => {
@@ -139,23 +132,19 @@ impl IpcListener {
                         },
                         Error::BalancerCrash(_,e,source) => {
                             if source!=ThreadSource::Handler {
-                                if ipc_listener.handler_sender.send( HandlerCommand::BalancerCrash(e) ).is_err() {
-                                    panic!("Can not send BalancerCrash");
-                                }
+                                try_send![ipc_listener.handler_sender, HandlerCommand::BalancerCrash(e)];
                             }
 
                             ipc_listener.synchronize_finish();
                         },
                         _ => {
-                            if ipc_listener.handler_sender.send( HandlerCommand::IpcListenerThreadCrash(Box::new(error)) ).is_err() {
-                                panic!("Can not send IpcListenerThreadCrash");
-                            }
+                            try_send![ipc_listener.handler_sender, HandlerCommand::IpcListenerThreadCrash(Box::new(error))];
                         }
                     }
                 }
             }
 
-            println!("handler ipc finish");
+            info!("handler ipc finish");
         }).unwrap();
 
         (join_handle,ipc_listener_sender)
@@ -166,11 +155,11 @@ impl IpcListener {
         handler_sender:HandlerSender,
         tasks_queue:ArcTasksQueue,
         sender:ArcSender,
-        argument: ArcArgument,
+        properties: ArcProperties,
     ) -> Result<Self,Error> {
         let mut socket = try!(nanomsg::Socket::new(nanomsg::Protocol::Pull),Error::NanomsgError);
         socket.set_receive_timeout(READ_TIMEOUT);
-        let mut endpoint = try!(socket.bind(argument.ipc_listener_address.to_string().as_str()),Error::NanomsgError);
+        let mut endpoint = try!(socket.bind(properties.argument.ipc_listener_address.to_string().as_str()),Error::NanomsgError);
 
         let ipc_listener = IpcListener{
             ipc_listener_receiver,
@@ -198,7 +187,7 @@ impl IpcListener {
             Ok( IpcListenerCommand::HandlerSetupError(e) ) => {
                 return;
             },
-            Ok( _ ) => panic!("Can not recv HandlerIsReady"),
+            Ok( _ ) => recv_error!(IpcListenerCommand::HandlerIsReady),
             Err(std::sync::mpsc::TryRecvError::Empty) => true,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                 return;
@@ -206,9 +195,7 @@ impl IpcListener {
         };
 
         //Say to Handler that setup is done and wait until setup of Handler will be done
-        if self.handler_sender.send( HandlerCommand::IpcListenerIsReady ).is_err() {
-            panic!("Can not send IpcListenerIsReady");
-        }
+        try_send![self.handler_sender, HandlerCommand::IpcListenerIsReady];
 
         if wait_command {
             match self.ipc_listener_receiver.recv() {
@@ -216,7 +203,7 @@ impl IpcListener {
                 Ok( IpcListenerCommand::HandlerSetupError(e) ) => {
                     return;
                 },
-                _ => panic!("Can not recv HandlerIsReady"),
+                _ => recv_error!(IpcListenerCommand::HandlerIsReady),
             }
         }
     }
@@ -251,7 +238,7 @@ impl IpcListener {
                         //IpcListenerCommand::Shutdown => return Ok(()),
                         IpcListenerCommand::HandlerThreadCrash(error) => return err!(Error::HandlerThreadCrash, error, ThreadSource::Handler),
                         IpcListenerCommand::BalancerCrash(error) => return err!(Error::BalancerCrash, error, ThreadSource::Handler),
-                        _ => panic!("Unexpected type of IpcListenerCommand"),
+                        _ => warn!("Unexpected type of IpcListenerCommand"),
                     }
                 }
 
@@ -268,7 +255,7 @@ impl IpcListener {
                     match message_type {
                         common_messages::Type::BalancerToHandler => {
                             let message:BalancerToHandler = common_messages::read_message( &buffer[..] );
-                            println!("BalancerToHandler message {}",server_id);
+                            info!("BalancerToHandler message {}",server_id);
 
                             match message {
                                 BalancerToHandler::EstablishingConnection => {
@@ -277,7 +264,7 @@ impl IpcListener {
                                 BalancerToHandler::Familiarity{handlers} =>
                                     channel_send!(self.handler_sender, HandlerCommand::Familiarity(Box::new((handlers,0))) ),
                                 BalancerToHandler::Shutdown => {
-                                    println!("hhh shutdown");
+                                    info!("Shutdown received");
                                     channel_send!(self.handler_sender, HandlerCommand::ShutdownReceived);
                                     while_is_activity=true;
                                     wait_activity_timeout=SystemTime::now()+Duration::new(2,0);
@@ -287,7 +274,7 @@ impl IpcListener {
                         },
                         common_messages::Type::HandlerToHandler => {
                             let message = common_messages::read_message( &buffer[..] );
-                            println!("HandlerToHandler message {}",server_id);
+                            info!("HandlerToHandler message {}",server_id);
 
                             self.handle_handler_message(server_id, time, number, message)?;
                         },
@@ -297,9 +284,7 @@ impl IpcListener {
                 Err(e) => {
                     if e.kind() == std::io::ErrorKind::TimedOut {
                         if while_is_activity && SystemTime::now() > wait_activity_timeout {//other servers have forgot about this server
-                            if self.handler_sender.send( HandlerCommand::Shutdown ).is_err() {
-                                panic!("Can not send Shutdown");
-                            }
+                            try_send![self.handler_sender, HandlerCommand::Shutdown];
                             return ok!();
                         }
                     }else{
@@ -314,13 +299,11 @@ impl IpcListener {
 
     fn synchronize_finish(&mut self) {
         //Say to Handler that work is done and wait until work of Handler will be done
-        if self.handler_sender.send( HandlerCommand::IpcListenerFinished ).is_err() {
-            panic!("Can not send IpcListenerFinished");
-        }
+        try_send![self.handler_sender, HandlerCommand::IpcListenerFinished];
 
         match self.ipc_listener_receiver.recv() {
             Ok( IpcListenerCommand::HandlerFinished ) => {},
-            _ => panic!("Can not recv HandlerFinished"),
+            _ => recv_error!(IpcListenerCommand::HandlerFinished),
         }
     }
 

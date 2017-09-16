@@ -16,11 +16,14 @@ extern crate object_pool;
 #[macro_use]
 extern crate nes;
 
+#[macro_use]
+extern crate common_macros;
+
 pub use common_address::Address;
 pub use common_types::{ServerType,ServerID};
 
-pub mod argument;
-pub use argument::{Argument,ArcArgument};
+pub mod properties;
+pub use properties::{Argument,Properties,ArcProperties};
 
 pub mod ipc_listener;
 pub use self::ipc_listener::{IpcListener};
@@ -53,16 +56,30 @@ impl std::fmt::Display for ThreadSource{
 }
 
 fn main() {
-    let argument=Argument::read();
-/*
-    let logger = match Logger::new_arc(&properties.logger_properties.address,ServerType::Balancer,ServerID::new(0,1)) {
-        Ok( logger ) => logger,
-        Err( e ) => panic!("Can not create logger:{}",e),
+    let argument = match Argument::read() {
+        Ok( properties ) => properties,
+        Err( e ) => panic!("Can not read argument: {}",e),
     };
-*/
-    let (ipc_listener_join_handler,ipc_listener_sender) = IpcListener::start(argument.clone());
-    let handler_join_handler = Handler::start(ipc_listener_sender,argument);
+
+    let logger = match Logger::new_arc(&argument.logger_address,ServerType::Handler,argument.server_id) {
+        Ok( logger ) => logger,
+        Err( e ) => panic!("Can not create logger: {}",e),
+    };
+
+    let properties = match Properties::read_arc(argument) {
+        Ok( properties ) => properties,
+        Err( e ) => {
+            error!("Can not read properties: {}",e);
+            panic!("Can not read properties: {}",e);
+        }
+    };
+
+    info!("Hello");
+
+    let (ipc_listener_join_handler,ipc_listener_sender) = IpcListener::start(properties.clone());
+    let handler_join_handler = Handler::start(ipc_listener_sender,properties);
 
     handler_join_handler.join();
     ipc_listener_join_handler.join();
+    logger.close();
 }
