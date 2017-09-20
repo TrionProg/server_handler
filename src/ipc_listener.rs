@@ -1,5 +1,6 @@
 use std;
 use nanomsg;
+use automat;
 use nes::{ErrorInfo,ErrorInfoTrait};
 use common_messages;
 
@@ -8,16 +9,18 @@ use std::time::Duration;
 use std::thread::JoinHandle;
 //use core
 use handler;
-use handler::{HandlerSender, HandlerCommand};
+use handler::HandlerSender;
+use ::HandlerCommand;
 use sender;
 use common_sender::SenderTrait;
 
 use common_messages::{HandlerToBalancer,BalancerToHandler};
-use common_messages::{HandlerToHandler};
+use common_messages::{HandlerToHandler,StorageToHandler};
 
 use ::ArcProperties;
 use ::ArcTasksQueue;
 use ::ArcSender;
+use ::ArcAutomat;
 use ::ThreadSource;
 use ::ServerType;
 use ::ServerID;
@@ -36,11 +39,12 @@ pub enum IpcListenerCommand {
     HandlerSender(HandlerSender),
     TasksQueue(ArcTasksQueue),
     Sender(ArcSender),
+    Automat(ArcAutomat),
     SenderCreationError,
     HandlerSetupError(Box<handler::Error>),
     HandlerIsReady,
-    //Shutdown,
-    HandlerFinished,
+    Shutdown,
+    HandlerFinished
 }
 
 pub struct IpcListener {
@@ -48,6 +52,7 @@ pub struct IpcListener {
     handler_sender:HandlerSender,
     tasks_queue:ArcTasksQueue,
     sender:ArcSender,
+    automat:ArcAutomat,
 
     socket:nanomsg::Socket,
     endpoint:nanomsg::Endpoint,
@@ -93,11 +98,17 @@ impl IpcListener {
                 _ => recv_error!(IpcListenerCommand::Sender),
             };
 
+            let automat = match ipc_listener_receiver.recv() {
+                Ok( IpcListenerCommand::Automat(automat) ) => automat,
+                _ => recv_error!(IpcListenerCommand::Automat),
+            };
+
             let mut ipc_listener = match IpcListener::setup(
                 ipc_listener_receiver,
                 handler_sender.clone(),
                 tasks_queue,
                 sender,
+                automat,
                 properties
             ) {
                 Ok( ipc_listener ) => ipc_listener,
@@ -113,7 +124,7 @@ impl IpcListener {
 
             ipc_listener.synchronize_setup();
 
-            match ipc_listener.listen() {
+            match ipc_listener.lifecycle() {
                 Ok(_) => {
                     //do something
 
@@ -155,6 +166,7 @@ impl IpcListener {
         handler_sender:HandlerSender,
         tasks_queue:ArcTasksQueue,
         sender:ArcSender,
+        automat:ArcAutomat,
         properties: ArcProperties,
     ) -> Result<Self,Error> {
         let mut socket = try!(nanomsg::Socket::new(nanomsg::Protocol::Pull),Error::NanomsgError);
@@ -166,6 +178,7 @@ impl IpcListener {
             handler_sender,
             tasks_queue,
             sender,
+            automat,
 
             socket,
             endpoint
@@ -208,16 +221,20 @@ impl IpcListener {
         }
     }
 
-    fn listen(&mut self) -> result![Error] {//Finishes without error only if Shutdown signal has been received.
+    fn lifecycle(&mut self) -> result![Error] {
+        self.lifecycle_listen()?;
+        self.lifecycle_shutdown()?;
+
+        ok!()
+    }
+
+    fn lifecycle_listen(&mut self) -> result![Error] {//Finishes without error only if Shutdown signal has been received.
         use std::time::SystemTime;
         use std::io::Read;
         let mut buffer=Vec::with_capacity(BUFFER_SIZE);
 
         //let mut recv_ipc_listener_receiver_time=SystemTime::now()+RECV_IPC_LISTENER_RECEIVER_INTERVAL;//TODO const fn
         let mut recv_ipc_listener_receiver_time=SystemTime::now();
-
-        let mut while_is_activity=false;
-        let mut wait_activity_timeout=SystemTime::now();
 
         loop {
             let now=SystemTime::now();
@@ -235,9 +252,9 @@ impl IpcListener {
                     };
 
                     match command {
-                        //IpcListenerCommand::Shutdown => return Ok(()),
                         IpcListenerCommand::HandlerThreadCrash(error) => return err!(Error::HandlerThreadCrash, error, ThreadSource::Handler),
                         IpcListenerCommand::BalancerCrash(error) => return err!(Error::BalancerCrash, error, ThreadSource::Handler),
+                        IpcListenerCommand::Shutdown => unreachable!(),//Мы хотим BalancerToHandler::Shutdown
                         _ => warn!("Unexpected type of IpcListenerCommand"),
                     }
                 }
@@ -254,40 +271,32 @@ impl IpcListener {
 
                     match message_type {
                         common_messages::Type::BalancerToHandler => {
-                            let message:BalancerToHandler = common_messages::read_message( &buffer[..] );
-                            info!("BalancerToHandler message {}",server_id);
+                            trace!("HandlerToBalancer message {}",server_id);
+                            let message = common_messages::read_message( &buffer[..] );
 
                             match message {
-                                BalancerToHandler::EstablishingConnection => {
-                                    try!(self.sender.send_to_balancer(&HandlerToBalancer::ConnectionEstablished), Error::BalancerCrash, ThreadSource::IpcListener);
-                                },
-                                BalancerToHandler::Familiarity{handlers} =>
-                                    channel_send!(self.handler_sender, HandlerCommand::Familiarity(Box::new((handlers,0))) ),
                                 BalancerToHandler::Shutdown => {
-                                    info!("Shutdown received");
                                     channel_send!(self.handler_sender, HandlerCommand::ShutdownReceived);
-                                    while_is_activity=true;
-                                    wait_activity_timeout=SystemTime::now()+Duration::new(2,0);
+                                    return ok!();
                                 },
-                                _ => {},
+                                _ => self.handle_balancer_message(server_id,time,number,message)?
                             }
                         },
-                        common_messages::Type::HandlerToHandler => {
+                        common_messages::Type::StorageToHandler => {
+                            trace!("StorageToHandler message {}",server_id);
                             let message = common_messages::read_message( &buffer[..] );
-                            info!("HandlerToHandler message {}",server_id);
-
-                            self.handle_handler_message(server_id, time, number, message)?;
+                            self.handle_storage_message(server_id,time,number,message)?;
                         },
-                        _ => unreachable!()
+                        common_messages::Type::HandlerToHandler => {
+                            trace!("HandlerToHandler message {}",server_id);
+                            let message = common_messages::read_message( &buffer[..] );
+                            self.handle_handler_message(server_id,time,number,message)?;
+                        },
+                        _ => panic!("Unexpected type of message {:?}", message_type),
                     }
                 },
                 Err(e) => {
-                    if e.kind() == std::io::ErrorKind::TimedOut {
-                        if while_is_activity && SystemTime::now() > wait_activity_timeout {//other servers have forgot about this server
-                            try_send![self.handler_sender, HandlerCommand::Shutdown];
-                            return ok!();
-                        }
-                    }else{
+                    if e.kind() != std::io::ErrorKind::TimedOut {
                         return err!(Error::IOError,Box::new(e));
                     }
                 }
@@ -295,6 +304,10 @@ impl IpcListener {
 
             buffer.clear();
         }
+    }
+
+    fn lifecycle_shutdown(&mut self) -> result![Error] {
+        ok!()//TODO
     }
 
     fn synchronize_finish(&mut self) {
@@ -305,6 +318,33 @@ impl IpcListener {
             Ok( IpcListenerCommand::HandlerFinished ) => {},
             _ => recv_error!(IpcListenerCommand::HandlerFinished),
         }
+    }
+
+    fn handle_balancer_message(&mut self, server_id:ServerID, time:u64, number:u32, message:BalancerToHandler) -> result![Error] {
+        match message {
+            BalancerToHandler::EstablishingConnection => {
+                try!(self.sender.balancer_sender.send(&HandlerToBalancer::ConnectionEstablished), Error::BalancerCrash, ThreadSource::IpcListener);
+            },
+            BalancerToHandler::Familiarity{storages, handlers} =>
+                channel_send!(self.handler_sender, HandlerCommand::Familiarity(Box::new((storages, handlers,0))) ),
+            BalancerToHandler::Shutdown => unreachable!(),
+            _ => {},
+        }
+
+        ok!()
+    }
+
+    fn handle_storage_message(&mut self, server_id:ServerID, time:u64, number:u32, message:StorageToHandler) -> result![Error] {
+        match message {
+            StorageToHandler::Connect(address,balancer_server_id) =>
+                channel_send!(self.handler_sender, HandlerCommand::AcceptConnection(ServerType::Storage, server_id, address, balancer_server_id.into())),
+            StorageToHandler::ConnectionAccepted(set_server_id) =>
+                channel_send!(self.handler_sender, HandlerCommand::ConnectionAccepted(ServerType::Storage, server_id, set_server_id.into())),
+            StorageToHandler::Connected =>
+                channel_send!(self.handler_sender, HandlerCommand::Connected(ServerType::Storage, server_id)),
+        }
+
+        ok!()
     }
 
     fn handle_handler_message(&mut self, server_id:ServerID, time:u64, number:u32, message:HandlerToHandler) -> result![Error] {

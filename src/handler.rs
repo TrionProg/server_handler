@@ -1,7 +1,8 @@
 use std;
-use common_messages;
+//use common_messages;
 use sender;
 use nanomsg;
+use automat;
 use nes::{ErrorInfo,ErrorInfoTrait};
 
 use std::io::Write;
@@ -11,11 +12,15 @@ use std::collections::HashSet;
 use ipc_listener;
 use ipc_listener::{IpcListenerSender, IpcListenerCommand};
 
-use common_sender::SenderTrait;
+use sender::SenderTrait;
+
+use ::HandlerCommand;
+use handler_command::SenderCommand;
 
 use ::ArcProperties;
 use ::{TasksQueue, ArcTasksQueue};
 use ::{Sender, ArcSender};
+use ::{Automat, ArcAutomat};
 use ::ThreadSource;
 use ::ServerType;
 use ::ServerID;
@@ -26,36 +31,12 @@ use common_messages::MessageServerID;
 pub type HandlerSender = std::sync::mpsc::Sender<HandlerCommand>;
 pub type HandlerReceiver = std::sync::mpsc::Receiver<HandlerCommand>;
 
-pub enum HandlerCommand {
-    IpcListenerThreadCrash(Box<ipc_listener::Error>),
-    BalancerCrash(Box<sender::Error>),
-
-    IpcListenerSetupError(Box<ipc_listener::Error>),
-    IpcListenerIsReady,
-    ShutdownReceived,
-    Shutdown,
-    IpcListenerFinished,
-    Task,
-    SenderTransactionFailed(sender::ServerType,ServerID,sender::Error,sender::BasicState),
-    Familiarity(Box<(Vec<(MessageServerID,String)>,usize)>),
-    AcceptConnection(ServerType,ServerID,String,ServerID),
-    ConnectionAccepted(ServerType,ServerID,ServerID),
-    Connected(ServerType,ServerID),
-}
-
 pub struct Handler {
     handler_receiver:HandlerReceiver,
     ipc_listener_sender:IpcListenerSender,
     tasks_queue:ArcTasksQueue,
     sender:ArcSender,
-    state:State,
-}
-
-pub enum State {
-    Initialization,
-    Familiarity(Box<FamiliarityList>),
-    Working,
-    Shutdown,
+    automat:ArcAutomat,
 }
 
 define_error!( Error,
@@ -76,15 +57,33 @@ macro_rules! do_sender_transaction {
     [$operation:expr] => {
         match $operation {
             Ok(_) => {},
-            Err(sender::Error::Poisoned(error_info)) => return Err(Error::Poisoned(error_info)),
-            Err(sender::Error::BrockenChannel(error_info)) => return Err(Error::BrockenChannel(error_info)),
-            Err(e) => {println!("{}",e);},
+            Err(sender::TransactionError::Poisoned(error_info)) => return Err(Error::Poisoned(error_info)),
+            Err(sender::TransactionError::BrockenChannel(error_info)) => return Err(Error::BrockenChannel(error_info)),
+            Err(e) => {warn!("{}",e);},
+        }
+    };
+    [$operation:expr,$and_do:expr] => {
+        match $operation {
+            Ok(_) => {$and_do},
+            Err(sender::TransactionError::Poisoned(error_info)) => return Err(Error::Poisoned(error_info)),
+            Err(sender::TransactionError::BrockenChannel(error_info)) => return Err(Error::BrockenChannel(error_info)),
+            Err(e) => {warn!("{}",e);},
         }
     };
 }
 
-pub struct FamiliarityList {
-    handlers:HashSet<ServerID>,
+macro_rules! do_automat_transaction {
+    [$operation:expr] => {
+        match $operation {
+            Ok(_) => {},
+            Err(automat::TransactionError::Poisoned(error_info)) => return Err(Error::Poisoned(error_info)),
+            Err(automat::TransactionError::BrockenChannel(error_info)) => return Err(Error::BrockenChannel(error_info)),
+            Err(automat::TransactionError::BalancerCrash(error_info,sender_error,thread_source)) => return Err(Error::BalancerCrash(error_info,sender_error,thread_source)),
+            Err(automat::TransactionError::ServerTransactionFailed(error_info)) => { //IpcListener не оповещаем и return не делаем тк скоро последует Error.
+                println!("Automat server Transaction failed");
+            },
+        }
+    };
 }
 
 impl Handler {
@@ -100,9 +99,9 @@ impl Handler {
 
             let sender = match Sender::new_arc(
                 &properties.argument.balancer_address,
-                &properties.argument.ipc_listener_address,
                 properties.argument.server_id,
-                handler_sender
+                &properties.argument.ipc_listener_address,
+                &handler_sender
             ){
                 Ok(sender) => sender,
                 Err(error) => {
@@ -117,11 +116,18 @@ impl Handler {
 
             try_send![ipc_listener_sender, IpcListenerCommand::Sender(sender.clone())];
 
+            let automat=Automat::new_arc(sender.clone(), properties.clone(), handler_sender.clone());
+
+            if ipc_listener_sender.send(IpcListenerCommand::Automat(automat.clone())).is_err() {
+                panic!("Can not send Automat");
+            }
+
             let mut handler = match Handler::setup(
                 handler_receiver,
                 ipc_listener_sender.clone(),
                 tasks_queue,
-                sender
+                sender,
+                automat
             ) {
                 Ok( handler ) => handler,
                 Err( error ) => {
@@ -135,7 +141,7 @@ impl Handler {
 
             handler.synchronize_setup();
 
-            match handler.handle() {
+            match handler.lifecycle() {
                 Ok(_) => {
                     //do something
 
@@ -171,14 +177,15 @@ impl Handler {
         handler_receiver:HandlerReceiver,
         ipc_listener_sender:IpcListenerSender,
         tasks_queue:ArcTasksQueue,
-        sender:ArcSender
+        sender:ArcSender,
+        automat:ArcAutomat
     ) -> result![Self,Error] {
         let handler = Handler{
             handler_receiver,
             ipc_listener_sender,
             tasks_queue,
             sender,
-            state:State::Initialization,
+            automat
         };
 
         ok!( handler )
@@ -197,11 +204,20 @@ impl Handler {
         }
     }
 
-    fn handle(&mut self) -> result![Error] {
+    fn lifecycle(&mut self) -> result![Error] {
+        do_automat_transaction![self.automat.answer_to_balancer()];
+
+        self.lifecycle_handle()?;
+
+        do_automat_transaction![self.automat.shutdown()];
+        self.lifecycle_shutdown()?;
+
+        ok!()
+    }
+
+    fn lifecycle_handle(&mut self) -> result![Error] {
         use std::time::SystemTime;
         use std::io::Read;
-
-        try!(self.sender.send_to_balancer(&HandlerToBalancer::ServerStarted), Error::BalancerCrash, ThreadSource::Handler);
 
         loop {
             let mut wait_tasks=!self.tasks_queue.is_task();
@@ -231,22 +247,29 @@ impl Handler {
                 };
 
                 match command {
-                    HandlerCommand::Shutdown => {println!("handler shutdown"); return ok!();},
-                    HandlerCommand::ShutdownReceived => {println!("recv shutdown");},
+                    HandlerCommand::ShutdownReceived => {info!("handler shutdown received"); return ok!();},
+                    HandlerCommand::Shutdown => unreachable!(),
                     //Setup Crash
                     HandlerCommand::IpcListenerThreadCrash(error) => return err!(Error::IpcListenerThreadCrash, error, ThreadSource::IpcListener),
                     HandlerCommand::BalancerCrash(error) => return err!(Error::BalancerCrash, error, ThreadSource::IpcListener),
                     HandlerCommand::Task => {
                         wait_tasks=false;
                     }
-                    HandlerCommand::Familiarity(familiarity_servers) =>
-                        self.familiarize(&(*familiarity_servers).0)?,
+
+                    HandlerCommand::Familiarity(familiarity_servers) => {
+                        let tuple=*familiarity_servers;
+                        do_automat_transaction![self.automat.familiarize(&tuple.0, &tuple.1)];
+                    },
                     HandlerCommand::AcceptConnection(server_type,server_id,address,balancer_server_id) =>
-                        self.accept_connection(server_type,server_id,address,balancer_server_id)?,
+                        do_sender_transaction![self.sender.accept_connection(server_type,server_id,address,balancer_server_id)],
                     HandlerCommand::ConnectionAccepted(server_type,server_id,set_server_id) =>
-                        self.connection_accepted(server_type,server_id,set_server_id)?,
+                        do_sender_transaction![self.sender.connection_accepted(server_type,server_id,set_server_id)],
                     HandlerCommand::Connected(server_type,server_id) =>
-                        self.connected(server_type,server_id)?,
+                        do_sender_transaction![self.sender.connected(server_type,server_id)],
+
+                    HandlerCommand::SenderCommand(sender_command) =>
+                        self.handle_sender_command(sender_command)?,
+
                     _ => panic!("Unexpected type of HandlerCommand"),
                 }
             }
@@ -254,6 +277,10 @@ impl Handler {
             //process task
 
         }
+    }
+
+    fn lifecycle_shutdown(&mut self) -> result![Error] {
+        ok!()
     }
 
     fn synchronize_finish(&mut self) {
@@ -266,40 +293,41 @@ impl Handler {
         }
     }
 
-    fn familiarize(&mut self,handlers:&Vec<(MessageServerID,String)>) -> result![Error]{
-        let mut wait_handlers=HashSet::new();
+    fn handle_sender_command(&self, sender_command:SenderCommand) -> result![Error] {
+        use common_messages::ToBalancerMessage;
 
-        for &(ref server_id,ref address) in handlers.iter() {
-            match self.sender.connect_to_handler(address, server_id.clone().into()) {
-                Ok(server_id) => {wait_handlers.insert(server_id.into());},
-                Err(sender::Error::Poisoned(error_info)) => return Err(Error::Poisoned(error_info)),
-                Err(sender::Error::BrockenChannel(error_info)) => return Err(Error::BrockenChannel(error_info)),
-                Err(e) => {println!("{}",e);},
+        match sender_command {
+            SenderCommand::ConnectionFailed(server_type, server_id, error) => {//TODO насколько фатально?
+                try!(self.sender.balancer_sender.send(&HandlerToBalancer::connection_failed(server_type,server_id)), Error::BalancerCrash, ThreadSource::Handler);
+            },
+            SenderCommand::AcceptConnectionFailed(server_type, server_id, error) => {
+                try!(self.sender.balancer_sender.send(&HandlerToBalancer::connection_failed(server_type,server_id)), Error::BalancerCrash, ThreadSource::Handler);
+            },
+            SenderCommand::TransactionFailed(server_type, server_id, error, basic_state) => {
+                warn!("Sender transaction failed {} {} {}", server_type, server_id, error);
+            },
+            SenderCommand::Connected(server_type, server_id, balancer_server_id, via_server_id) => {
+                info!("Connected to {} ({}) {} via {}",server_type, server_id, balancer_server_id, via_server_id)
+                //TODO пока ничего не делаем
+            },
+            SenderCommand::ConnectedToAll(server_type) => {
+                do_automat_transaction![self.automat.connected_to_all()];
             }
-        }
-
-        let familiarity_list = FamiliarityList {
-            handlers:wait_handlers
-        };
-
-        if familiarity_list.is_empty() { //Сервер один
-            self.state=State::Working;
-            try!(self.sender.send_to_balancer(&HandlerToBalancer::FamiliarityFinished), Error::BalancerCrash, ThreadSource::Handler);
-        }else{
-            self.state=State::Familiarity(Box::new(familiarity_list));
         }
 
         ok!()
     }
+/*
 
     fn accept_connection(&mut self, server_type:ServerType, server_id:ServerID, address:String, balancer_server_id: ServerID) -> result![Error] {
         match self.state {
             State::Initialization | State::Familiarity(_) | State::Working => {
+                info!("{} \"{}\" Accepted Connected {}",&server_id,&address,&balancer_server_id);
                 match server_type {
-                    ServerType::Handler => {
-                        println!("{} \"{}\" Accepted Connected {}",&server_id,&address,&balancer_server_id);
-                        do_sender_transaction![ self.sender.accept_connection_from_handler(server_id,address,balancer_server_id) ];
-                    },
+                    ServerType::Storage =>
+                        do_sender_transaction![ self.sender.accept_connection_from_storage(server_id,address,balancer_server_id) ],
+                    ServerType::Handler =>
+                        do_sender_transaction![ self.sender.accept_connection_from_handler(server_id,address,balancer_server_id) ],
                     _ => unreachable!()
                 }
             },
@@ -310,6 +338,9 @@ impl Handler {
         ok!()
     }
 
+    эти функции засунуть в common_sender, состояния переключаются с помощью автомата, если сервер готов, то отправить спец сообщение.
+    familiarity_list засунуть в sender. те все очень похоже на servers
+
     ///Эта функция вызывается при получении сообщения ConnectionAccepted от другого сервера.
     /// * При состоянии State::Familiarity она вызывает connection_to_handler_accepted sender-а, которая,
     ///и, если список серверов, к которым нужно подключиться, становится пустым, то переводит сервер в состояние Working и
@@ -318,13 +349,10 @@ impl Handler {
         let connected_to_all = match self.state {
             State::Familiarity(ref mut familiarity_list ) => {
                 match server_type {
-                    ServerType::Handler => {
-                        match self.sender.connection_to_handler_accepted(server_id,set_server_id) {
-                            Ok(_) => {familiarity_list.handlers.remove(&server_id);},
-                            Err(sender::Error::Poisoned(error_info)) => return Err(Error::Poisoned(error_info)),
-                            Err(sender::Error::BrockenChannel(error_info)) => return Err(Error::BrockenChannel(error_info)),
-                            Err(e) => {println!("{}",e);},
-                        }
+                    ServerType::Storage =>
+                        do_sender_transaction![ self.sender.connection_to_storage_accepted(server_id,set_server_id), familiarity_list.handlers.remove(&server_id)],
+                    ServerType::Handler =>
+                        do_sender_transaction![ self.sender.connection_to_handler_accepted(server_id,set_server_id), familiarity_list.handlers.remove(&server_id)],
                     },
                     _ => unreachable!()
                 }
@@ -361,6 +389,7 @@ impl Handler {
 
         ok!()
     }
+    */
 
 }
 
@@ -378,9 +407,3 @@ impl From<sender::Error> for Error{
     }
 }
 */
-
-impl FamiliarityList {
-    fn is_empty(&self) -> bool {
-        self.handlers.len()==0
-    }
-}

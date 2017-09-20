@@ -40,6 +40,12 @@ pub use self::tasks_queue::{TasksQueue,ArcTasksQueue};
 pub mod sender;
 pub use self::sender::{Sender,ArcSender};
 
+pub mod handler_command;
+pub use handler_command::HandlerCommand;
+
+pub mod automat;
+pub use self::automat::{Automat,ArcAutomat};
+
 #[derive(Debug,Copy,Clone,Eq,PartialEq)]
 pub enum ThreadSource{
     IpcListener,
