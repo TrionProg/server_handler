@@ -12,8 +12,8 @@ common_types = { path = "../common/common_types" }
 common_address = { path = "../common/common_address" }
 common_messages = { path = "../common/common_messages" }
 common_ipc_channel = {path = "../common/common_ipc_channel" }
-common_sender = { path = "../common/common_sender" }
 common_logger = { path = "../common/common_logger" }
 common_macros = { path = "../common/common_macros" }
 object_pool = { path = "../../rust/object_pool" }
+common_sender = { path = "../common/common_sender" }
 serde = "1.0.9"

@@ -100,7 +100,7 @@ impl Automat {
     }
 
     ///Выполняет знакомство, если сервер один, то сразу переключает состояние в Working, если несколько, то знакомится.
-    ///При переключении в состояние Working, устанавливает состояние и отправляет handlerCommand::FamiliarityFinished
+    ///При переключении в состояние Working, устанавливает состояние и отправляет HandlerCommand::FamiliarityFinished
     pub fn familiarize(&self,
         storages:&Vec<(MessageServerID,String)>,
         handlers:&Vec<(MessageServerID,String)>
@@ -121,7 +121,7 @@ impl Automat {
     }
 
     ///Вызывается, когда Handler познакомился с серверами определённого типа, уменьшаем количество серверов(типов), с которыми надо познакомиться,
-    ///Если это число становится равным 0, то переключаемся в состояние Working, при этом отправляется handlerCommand::FamiliarityFinished
+    ///Если это число становится равным 0, то переключаемся в состояние Working, при этом отправляется HandlerCommand::FamiliarityFinished
     pub fn connected_to_all(&self) -> result![TransactionError] {
         let mut state_guard=mutex_lock!(&self.state,TransactionError);
 

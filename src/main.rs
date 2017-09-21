@@ -29,7 +29,7 @@ pub mod ipc_listener;
 pub use self::ipc_listener::{IpcListener};
 //pub use
 pub mod handler;
-pub use self::handler::{Handler};
+pub use self::handler::Handler;
 
 pub mod task;
 pub use self::task::Task;

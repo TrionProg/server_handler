@@ -271,7 +271,7 @@ impl IpcListener {
 
                     match message_type {
                         common_messages::Type::BalancerToHandler => {
-                            trace!("HandlerToBalancer message {}",server_id);
+                            trace!("BalancerToHandler message {}",server_id);
                             let message = common_messages::read_message( &buffer[..] );
 
                             match message {
@@ -292,7 +292,10 @@ impl IpcListener {
                             let message = common_messages::read_message( &buffer[..] );
                             self.handle_handler_message(server_id,time,number,message)?;
                         },
-                        _ => panic!("Unexpected type of message {:?}", message_type),
+                        _ => {
+                            warn!("Unexpected type of message {:?}", message_type);
+                            panic!("Unexpected type of message {:?}", message_type);
+                        },
                     }
                 },
                 Err(e) => {

@@ -258,6 +258,7 @@ impl Handler {
 
                     HandlerCommand::Familiarity(familiarity_servers) => {
                         let tuple=*familiarity_servers;
+                        warn!("{} {}",tuple.0.len(), tuple.1.len());
                         do_automat_transaction![self.automat.familiarize(&tuple.0, &tuple.1)];
                     },
                     HandlerCommand::AcceptConnection(server_type,server_id,address,balancer_server_id) =>
@@ -392,18 +393,3 @@ impl Handler {
     */
 
 }
-
-/*
-impl From<sender::Error> for Error{
-    fn from(sender_error:sender::Error) -> Self{
-        match sender_error {
-            sender::Error::Poisoned(error_info) => {
-                let error=ipc_listener::Error::MutexPoisoned(error_info);
-                create_err!(Error::IpcListenerThreadCrash, ThreadSource::Handler, Box::new(error))
-            },
-            sender::Error::SendToBalancerError(error_info, e) => Error::BalancerCrash(error_info, ThreadSource::Handler, e),
-            sender::Error::NanomsgError(_, e) => panic!("Sender nanomsg error"),
-        }
-    }
-}
-*/
