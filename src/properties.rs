@@ -8,12 +8,12 @@ use std::sync::Arc;
 use config::read::Config;
 use config::read::Struct;
 use ::Address;
-use ::ServerID;
+use ::ConnectionID;
 
 pub type ArcProperties = Arc<Properties>;
 
 pub struct Argument {
-    pub server_id:ServerID,
+    pub connection_id:ConnectionID,
     pub logger_address:Address,
     pub balancer_address:Address,
     pub ipc_listener_address:Address,
@@ -54,13 +54,13 @@ impl Argument {
             Some( args_text ) => {
                 let args=config::read::Config::parse(args_text.as_str())?;
 
-                let server_id_struct=args.get_struct("server id")?;
+                let connection_id_struct=args.get_struct("server id")?;
 
                 Argument{
                     server_name: args.get_text("server name")?.value.to_string(),
-                    server_id: ServerID::new(
-                        server_id_struct.get_integer("slot_index")?.value as usize,
-                        server_id_struct.get_integer("unique_id")?.value as usize,
+                    connection_id: ConnectionID::new(
+                        connection_id_struct.get_integer("slot_index")?.value as usize,
+                        connection_id_struct.get_integer("unique_id")?.value as usize,
                     ),
                     logger_address: Address::read_field_root(&args,"logger address")?,
                     balancer_address: Address::read_field_root(&args,"balancer address")?,
@@ -70,7 +70,7 @@ impl Argument {
             None => {
                 Argument{
                     server_name: "H1".to_string(),
-                    server_id: ServerID::new(0,1),
+                    connection_id: ConnectionID::new(0,1),
                     logger_address: Address::Tcp("127.0.0.1".to_string(), 1917),
                     balancer_address: Address::Tcp("0.0.0.0".to_string(), 1939),
                     ipc_listener_address: Address::Tcp("0.0.0.0".to_string(), 1941),

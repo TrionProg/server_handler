@@ -23,7 +23,7 @@ use ::ArcSender;
 use ::ArcAutomat;
 use ::ThreadSource;
 use ::ServerType;
-use ::ServerID;
+use ::ConnectionID;
 
 const BUFFER_SIZE:usize = 32*1024;
 const READ_TIMEOUT:isize = 50;
@@ -266,12 +266,12 @@ impl IpcListener {
             //Read IPC
             match self.socket.read_to_end(&mut buffer) {
                 Ok(length) => {
-                    let (read_length,server_id,time,number,message_type) = common_messages::read_header( &buffer[..] );
+                    let (read_length,connection_id,time,number,message_type) = common_messages::read_header( &buffer[..] );
                     assert_eq!(read_length as usize,length);
 
                     match message_type {
                         common_messages::Type::BalancerToHandler => {
-                            trace!("BalancerToHandler message {}",server_id);
+                            trace!("BalancerToHandler message {}",connection_id);
                             let message = common_messages::read_message( &buffer[..] );
 
                             match message {
@@ -279,18 +279,18 @@ impl IpcListener {
                                     channel_send!(self.handler_sender, HandlerCommand::ShutdownReceived);
                                     return ok!();
                                 },
-                                _ => self.handle_balancer_message(server_id,time,number,message)?
+                                _ => self.handle_balancer_message(connection_id,time,number,message)?
                             }
                         },
                         common_messages::Type::StorageToHandler => {
-                            trace!("StorageToHandler message {}",server_id);
+                            trace!("StorageToHandler message {}",connection_id);
                             let message = common_messages::read_message( &buffer[..] );
-                            self.handle_storage_message(server_id,time,number,message)?;
+                            self.handle_storage_message(connection_id,time,number,message)?;
                         },
                         common_messages::Type::HandlerToHandler => {
-                            trace!("HandlerToHandler message {}",server_id);
+                            trace!("HandlerToHandler message {}",connection_id);
                             let message = common_messages::read_message( &buffer[..] );
-                            self.handle_handler_message(server_id,time,number,message)?;
+                            self.handle_handler_message(connection_id,time,number,message)?;
                         },
                         _ => {
                             warn!("Unexpected type of message {:?}", message_type);
@@ -323,7 +323,7 @@ impl IpcListener {
         }
     }
 
-    fn handle_balancer_message(&mut self, server_id:ServerID, time:u64, number:u32, message:BalancerToHandler) -> result![Error] {
+    fn handle_balancer_message(&mut self, connection_id:ConnectionID, time:u64, number:u32, message:BalancerToHandler) -> result![Error] {
         match message {
             BalancerToHandler::EstablishingConnection => {
                 try!(self.sender.balancer_sender.send(&HandlerToBalancer::ConnectionEstablished), Error::BalancerCrash, ThreadSource::IpcListener);
@@ -337,27 +337,27 @@ impl IpcListener {
         ok!()
     }
 
-    fn handle_storage_message(&mut self, server_id:ServerID, time:u64, number:u32, message:StorageToHandler) -> result![Error] {
+    fn handle_storage_message(&mut self, connection_id:ConnectionID, time:u64, number:u32, message:StorageToHandler) -> result![Error] {
         match message {
-            StorageToHandler::Connect(address,balancer_server_id) =>
-                channel_send!(self.handler_sender, HandlerCommand::AcceptConnection(ServerType::Storage, server_id, address, balancer_server_id.into())),
-            StorageToHandler::ConnectionAccepted(set_server_id) =>
-                channel_send!(self.handler_sender, HandlerCommand::ConnectionAccepted(ServerType::Storage, server_id, set_server_id.into())),
+            StorageToHandler::Connect(address,balancer_connection_id) =>
+                channel_send!(self.handler_sender, HandlerCommand::AcceptConnection(ServerType::Storage, connection_id, address, balancer_connection_id.into())),
+            StorageToHandler::ConnectionAccepted(set_connection_id) =>
+                channel_send!(self.handler_sender, HandlerCommand::ConnectionAccepted(ServerType::Storage, connection_id, set_connection_id.into())),
             StorageToHandler::Connected =>
-                channel_send!(self.handler_sender, HandlerCommand::Connected(ServerType::Storage, server_id)),
+                channel_send!(self.handler_sender, HandlerCommand::Connected(ServerType::Storage, connection_id)),
         }
 
         ok!()
     }
 
-    fn handle_handler_message(&mut self, server_id:ServerID, time:u64, number:u32, message:HandlerToHandler) -> result![Error] {
+    fn handle_handler_message(&mut self, connection_id:ConnectionID, time:u64, number:u32, message:HandlerToHandler) -> result![Error] {
         match message {
-            HandlerToHandler::Connect(address,balancer_server_id) =>
-                channel_send!(self.handler_sender, HandlerCommand::AcceptConnection(ServerType::Handler, server_id, address, balancer_server_id.into())),
-            HandlerToHandler::ConnectionAccepted(set_server_id) =>
-                channel_send!(self.handler_sender, HandlerCommand::ConnectionAccepted(ServerType::Handler, server_id, set_server_id.into())),
+            HandlerToHandler::Connect(address,balancer_connection_id) =>
+                channel_send!(self.handler_sender, HandlerCommand::AcceptConnection(ServerType::Handler, connection_id, address, balancer_connection_id.into())),
+            HandlerToHandler::ConnectionAccepted(set_connection_id) =>
+                channel_send!(self.handler_sender, HandlerCommand::ConnectionAccepted(ServerType::Handler, connection_id, set_connection_id.into())),
             HandlerToHandler::Connected =>
-                channel_send!(self.handler_sender, HandlerCommand::Connected(ServerType::Handler, server_id)),
+                channel_send!(self.handler_sender, HandlerCommand::Connected(ServerType::Handler, connection_id)),
         }
 
         ok!()

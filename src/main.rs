@@ -20,7 +20,7 @@ extern crate nes;
 extern crate common_macros;
 
 pub use common_address::Address;
-pub use common_types::{ServerType,ServerID};
+pub use common_types::{ServerType,ConnectionID};
 
 pub mod properties;
 pub use properties::{Argument,Properties,ArcProperties};
@@ -67,7 +67,7 @@ fn main() {
         Err( e ) => panic!("Can not read argument: {}",e),
     };
 
-    let logger = match Logger::new_arc(&argument.logger_address,ServerType::Handler,argument.server_id) {
+    let logger = match Logger::new_arc(&argument.logger_address,ServerType::Handler,argument.connection_id) {
         Ok( logger ) => logger,
         Err( e ) => panic!("Can not create logger: {}",e),
     };

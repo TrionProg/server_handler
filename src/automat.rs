@@ -7,7 +7,7 @@ use nes::{ErrorInfo,ErrorInfoTrait};
 
 use std::sync::{Arc,Mutex,RwLock};
 
-use common_messages::MessageServerID;
+use common_messages::MessageConnectionID;
 use common_messages::HandlerToBalancer;
 
 use handler::HandlerSender;
@@ -102,8 +102,8 @@ impl Automat {
     ///Выполняет знакомство, если сервер один, то сразу переключает состояние в Working, если несколько, то знакомится.
     ///При переключении в состояние Working, устанавливает состояние и отправляет HandlerCommand::FamiliarityFinished
     pub fn familiarize(&self,
-        storages:&Vec<(MessageServerID,String)>,
-        handlers:&Vec<(MessageServerID,String)>
+        storages:&Vec<(MessageConnectionID,String)>,
+        handlers:&Vec<(MessageConnectionID,String)>
     ) -> result![TransactionError]{
         let mut state_guard=mutex_lock!(&self.state,TransactionError);
 

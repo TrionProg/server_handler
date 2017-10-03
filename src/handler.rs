@@ -23,10 +23,10 @@ use ::{Sender, ArcSender};
 use ::{Automat, ArcAutomat};
 use ::ThreadSource;
 use ::ServerType;
-use ::ServerID;
+use ::ConnectionID;
 
 use common_messages::{HandlerToBalancer};
-use common_messages::MessageServerID;
+use common_messages::MessageConnectionID;
 
 pub type HandlerSender = std::sync::mpsc::Sender<HandlerCommand>;
 pub type HandlerReceiver = std::sync::mpsc::Receiver<HandlerCommand>;
@@ -99,7 +99,7 @@ impl Handler {
 
             let sender = match Sender::new_arc(
                 &properties.argument.balancer_address,
-                properties.argument.server_id,
+                properties.argument.connection_id,
                 &properties.argument.ipc_listener_address,
                 &handler_sender
             ){
@@ -261,12 +261,12 @@ impl Handler {
                         warn!("{} {}",tuple.0.len(), tuple.1.len());
                         do_automat_transaction![self.automat.familiarize(&tuple.0, &tuple.1)];
                     },
-                    HandlerCommand::AcceptConnection(server_type,server_id,address,balancer_server_id) =>
-                        do_sender_transaction![self.sender.accept_connection(server_type,server_id,address,balancer_server_id)],
-                    HandlerCommand::ConnectionAccepted(server_type,server_id,set_server_id) =>
-                        do_sender_transaction![self.sender.connection_accepted(server_type,server_id,set_server_id)],
-                    HandlerCommand::Connected(server_type,server_id) =>
-                        do_sender_transaction![self.sender.connected(server_type,server_id)],
+                    HandlerCommand::AcceptConnection(server_type,connection_id,address,balancer_connection_id) =>
+                        do_sender_transaction![self.sender.accept_connection(server_type,connection_id,address,balancer_connection_id)],
+                    HandlerCommand::ConnectionAccepted(server_type,connection_id,set_connection_id) =>
+                        do_sender_transaction![self.sender.connection_accepted(server_type,connection_id,set_connection_id)],
+                    HandlerCommand::Connected(server_type,connection_id) =>
+                        do_sender_transaction![self.sender.connected(server_type,connection_id)],
 
                     HandlerCommand::SenderCommand(sender_command) =>
                         self.handle_sender_command(sender_command)?,
@@ -298,17 +298,17 @@ impl Handler {
         use common_messages::ToBalancerMessage;
 
         match sender_command {
-            SenderCommand::ConnectionFailed(server_type, server_id, error) => {//TODO насколько фатально?
-                try!(self.sender.balancer_sender.send(&HandlerToBalancer::connection_failed(server_type,server_id)), Error::BalancerCrash, ThreadSource::Handler);
+            SenderCommand::ConnectionFailed(server_type, connection_id, error) => {//TODO насколько фатально?
+                try!(self.sender.balancer_sender.send(&HandlerToBalancer::connection_failed(server_type,connection_id)), Error::BalancerCrash, ThreadSource::Handler);
             },
-            SenderCommand::AcceptConnectionFailed(server_type, server_id, error) => {
-                try!(self.sender.balancer_sender.send(&HandlerToBalancer::connection_failed(server_type,server_id)), Error::BalancerCrash, ThreadSource::Handler);
+            SenderCommand::AcceptConnectionFailed(server_type, connection_id, error) => {
+                try!(self.sender.balancer_sender.send(&HandlerToBalancer::connection_failed(server_type,connection_id)), Error::BalancerCrash, ThreadSource::Handler);
             },
-            SenderCommand::TransactionFailed(server_type, server_id, error, basic_state) => {
-                warn!("Sender transaction failed {} {} {}", server_type, server_id, error);
+            SenderCommand::TransactionFailed(server_type, connection_id, error, basic_state) => {
+                warn!("Sender transaction failed {} {} {}", server_type, connection_id, error);
             },
-            SenderCommand::Connected(server_type, server_id, balancer_server_id, via_server_id) => {
-                info!("Connected to {} ({}) {} via {}",server_type, server_id, balancer_server_id, via_server_id)
+            SenderCommand::Connected(server_type, connection_id, balancer_connection_id, via_connection_id) => {
+                info!("Connected to {} ({}) {} via {}",server_type, connection_id, balancer_connection_id, via_connection_id)
                 //TODO пока ничего не делаем
             },
             SenderCommand::ConnectedToAll(server_type) => {
@@ -320,15 +320,15 @@ impl Handler {
     }
 /*
 
-    fn accept_connection(&mut self, server_type:ServerType, server_id:ServerID, address:String, balancer_server_id: ServerID) -> result![Error] {
+    fn accept_connection(&mut self, server_type:ServerType, connection_id:ConnectionID, address:String, balancer_connection_id: ConnectionID) -> result![Error] {
         match self.state {
             State::Initialization | State::Familiarity(_) | State::Working => {
-                info!("{} \"{}\" Accepted Connected {}",&server_id,&address,&balancer_server_id);
+                info!("{} \"{}\" Accepted Connected {}",&connection_id,&address,&balancer_connection_id);
                 match server_type {
                     ServerType::Storage =>
-                        do_sender_transaction![ self.sender.accept_connection_from_storage(server_id,address,balancer_server_id) ],
+                        do_sender_transaction![ self.sender.accept_connection_from_storage(connection_id,address,balancer_connection_id) ],
                     ServerType::Handler =>
-                        do_sender_transaction![ self.sender.accept_connection_from_handler(server_id,address,balancer_server_id) ],
+                        do_sender_transaction![ self.sender.accept_connection_from_handler(connection_id,address,balancer_connection_id) ],
                     _ => unreachable!()
                 }
             },
@@ -346,14 +346,14 @@ impl Handler {
     /// * При состоянии State::Familiarity она вызывает connection_to_handler_accepted sender-а, которая,
     ///и, если список серверов, к которым нужно подключиться, становится пустым, то переводит сервер в состояние Working и
     ///отправляет Balancer-у сообщение FamiliarityFinished
-    fn connection_accepted(&mut self, server_type:ServerType, server_id:ServerID, set_server_id:ServerID) -> result![Error] {
+    fn connection_accepted(&mut self, server_type:ServerType, connection_id:ConnectionID, set_connection_id:ConnectionID) -> result![Error] {
         let connected_to_all = match self.state {
             State::Familiarity(ref mut familiarity_list ) => {
                 match server_type {
                     ServerType::Storage =>
-                        do_sender_transaction![ self.sender.connection_to_storage_accepted(server_id,set_server_id), familiarity_list.handlers.remove(&server_id)],
+                        do_sender_transaction![ self.sender.connection_to_storage_accepted(connection_id,set_connection_id), familiarity_list.handlers.remove(&connection_id)],
                     ServerType::Handler =>
-                        do_sender_transaction![ self.sender.connection_to_handler_accepted(server_id,set_server_id), familiarity_list.handlers.remove(&server_id)],
+                        do_sender_transaction![ self.sender.connection_to_handler_accepted(connection_id,set_connection_id), familiarity_list.handlers.remove(&connection_id)],
                     },
                     _ => unreachable!()
                 }
@@ -374,12 +374,12 @@ impl Handler {
         ok!()
     }
 
-    fn connected(&mut self,server_type:ServerType, server_id:ServerID) -> result![Error] {
+    fn connected(&mut self,server_type:ServerType, connection_id:ConnectionID) -> result![Error] {
         match self.state {
             State::Initialization | State::Familiarity(_) | State::Working => {
                 match server_type {
                     ServerType::Handler => {
-                        do_sender_transaction![ self.sender.connected_to_handler(server_id) ];
+                        do_sender_transaction![ self.sender.connected_to_handler(connection_id) ];
                     },
                     _ => unreachable!()
                 }

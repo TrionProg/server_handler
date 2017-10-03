@@ -20,7 +20,7 @@ use ::HandlerCommand;
 
 use ::Address;
 use ::ServerType;
-use ::ServerID;
+use ::ConnectionID;
 
 const SEND_TO_BALANCER_TIMEOUT:isize = 500;
 
@@ -40,9 +40,9 @@ impl SenderTrait for Sender {
     type MToS=HandlerToStorage; type S=StorageServer; type SStorage=Storage<StorageServer, HandlerToStorage, HandlerCommand>;
     type MToH=HandlerToHandler; type H=HandlerServer; type HStorage=Storage<HandlerServer, HandlerToHandler, HandlerCommand>;
 
-    fn new(balancer_address:&Address, balancer_server_id:ServerID, self_address:&Address, self_sender:&mpsc::Sender<Self::SC>) -> result![Sender,Error] {
+    fn new(balancer_address:&Address, balancer_connection_id:ConnectionID, self_address:&Address, self_sender:&mpsc::Sender<Self::SC>) -> result![Sender,Error] {
         let sender=Sender {
-            balancer_sender:BalancerSender::new(balancer_address, balancer_server_id)?,
+            balancer_sender:BalancerSender::new(balancer_address, balancer_connection_id)?,
             storages:Storage::new(ServerType::Storage, self_address, self_sender),
             handlers:Storage::new(ServerType::Handler, self_address, self_sender)
         };
@@ -50,8 +50,8 @@ impl SenderTrait for Sender {
         ok!(sender)
     }
 
-    fn new_arc(balancer_address:&Address, balancer_server_id:ServerID, self_address:&Address, self_sender:&mpsc::Sender<Self::SC>) -> result![Arc<Sender>,Error] {
-        let sender=Sender::new(balancer_address, balancer_server_id, self_address, self_sender)?;
+    fn new_arc(balancer_address:&Address, balancer_connection_id:ConnectionID, self_address:&Address, self_sender:&mpsc::Sender<Self::SC>) -> result![Arc<Sender>,Error] {
+        let sender=Sender::new(balancer_address, balancer_connection_id, self_address, self_sender)?;
 
         ok!(Arc::new(sender))
     }
