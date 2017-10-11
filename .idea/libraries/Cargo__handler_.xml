@@ -1,0 +1,36 @@
+<component name="libraryTable">
+  <library name="Cargo &lt;handler&gt;">
+    <CLASSES>
+      <root url="file://$PROJECT_DIR$/../common/common_sender" />
+      <root url="file://$PROJECT_DIR$/../common/common_macros" />
+      <root url="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/serde-1.0.11" />
+      <root url="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/synom-0.11.3" />
+      <root url="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/nanomsg-sys-0.6.2" />
+      <root url="file://$PROJECT_DIR$/../common/common_logger" />
+      <root url="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/nanomsg-0.6.2" />
+      <root url="file://$PROJECT_DIR$/../common/common_messages" />
+      <root url="file://$USER_HOME$/rust/config" />
+      <root url="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/unicode-xid-0.0.4" />
+      <root url="file://$PROJECT_DIR$/../common/common_address" />
+      <root url="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_derive_internals-0.15.1" />
+      <root url="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/syn-0.11.11" />
+      <root url="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_derive-1.0.11" />
+      <root url="file://$PROJECT_DIR$/../common/common_types" />
+      <root url="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/bincode-0.8.0" />
+      <root url="file://$USER_HOME$/rust/object_pool" />
+      <root url="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/gcc-0.3.51" />
+      <root url="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/num-traits-0.1.40" />
+      <root url="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/cmake-0.1.24" />
+      <root url="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.29" />
+      <root url="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/log-0.3.8" />
+      <root url="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-0.3.15" />
+      <root url="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/byteorder-1.1.0" />
+      <root url="file://$USER_HOME$/rust/lexer" />
+      <root url="file://$PROJECT_DIR$/../common/common_ipc_channel" />
+      <root url="file://$USER_HOME$/rust/nes" />
+      <root url="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/pkg-config-0.3.9" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
