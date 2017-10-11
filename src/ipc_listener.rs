@@ -24,6 +24,7 @@ use ::ArcAutomat;
 use ::ThreadSource;
 use ::ServerType;
 use ::ConnectionID;
+use ::ServerID;
 
 const BUFFER_SIZE:usize = 32*1024;
 const READ_TIMEOUT:isize = 50;
@@ -339,8 +340,8 @@ impl IpcListener {
 
     fn handle_storage_message(&mut self, connection_id:ConnectionID, time:u64, number:u32, message:StorageToHandler) -> result![Error] {
         match message {
-            StorageToHandler::Connect(address,balancer_connection_id) =>
-                channel_send!(self.handler_sender, HandlerCommand::AcceptConnection(ServerType::Storage, connection_id, address, balancer_connection_id.into())),
+            StorageToHandler::Connect(server_id,address,balancer_connection_id) =>
+                channel_send!(self.handler_sender, HandlerCommand::AcceptConnection(ServerType::Storage, server_id, connection_id, address, balancer_connection_id.into())),
             StorageToHandler::ConnectionAccepted(set_connection_id) =>
                 channel_send!(self.handler_sender, HandlerCommand::ConnectionAccepted(ServerType::Storage, connection_id, set_connection_id.into())),
             StorageToHandler::Connected =>
@@ -352,8 +353,8 @@ impl IpcListener {
 
     fn handle_handler_message(&mut self, connection_id:ConnectionID, time:u64, number:u32, message:HandlerToHandler) -> result![Error] {
         match message {
-            HandlerToHandler::Connect(address,balancer_connection_id) =>
-                channel_send!(self.handler_sender, HandlerCommand::AcceptConnection(ServerType::Handler, connection_id, address, balancer_connection_id.into())),
+            HandlerToHandler::Connect(server_id,address,balancer_connection_id) =>
+                channel_send!(self.handler_sender, HandlerCommand::AcceptConnection(ServerType::Handler, server_id, connection_id, address, balancer_connection_id.into())),
             HandlerToHandler::ConnectionAccepted(set_connection_id) =>
                 channel_send!(self.handler_sender, HandlerCommand::ConnectionAccepted(ServerType::Handler, connection_id, set_connection_id.into())),
             HandlerToHandler::Connected =>

@@ -9,15 +9,16 @@ use config::read::Config;
 use config::read::Struct;
 use ::Address;
 use ::ConnectionID;
+use ::ServerID;
 
 pub type ArcProperties = Arc<Properties>;
 
 pub struct Argument {
+    pub server_id:ServerID,
     pub connection_id:ConnectionID,
     pub logger_address:Address,
     pub balancer_address:Address,
     pub ipc_listener_address:Address,
-    pub server_name:String,
     //pub start_mode:Address, TODO
 }
 
@@ -46,7 +47,7 @@ impl<'a> From<common_address::ReadError<'a>> for Error{
 }
 
 impl Argument {
-    pub fn read() -> result![Self,Error] {
+    pub fn read() -> Result<Self,Error> {
         let mut args=std::env::args();
         args.next();
 
@@ -54,10 +55,11 @@ impl Argument {
             Some( args_text ) => {
                 let args=config::read::Config::parse(args_text.as_str())?;
 
-                let connection_id_struct=args.get_struct("server id")?;
+                let server_id=args.get_integer("server id")?.value as ServerID;
+                let connection_id_struct=args.get_struct("server connection id")?;
 
                 Argument{
-                    server_name: args.get_text("server name")?.value.to_string(),
+                    server_id,
                     connection_id: ConnectionID::new(
                         connection_id_struct.get_integer("slot_index")?.value as usize,
                         connection_id_struct.get_integer("unique_id")?.value as usize,
@@ -69,7 +71,7 @@ impl Argument {
             },
             None => {
                 Argument{
-                    server_name: "H1".to_string(),
+                    server_id: 1 as ServerID,
                     connection_id: ConnectionID::new(0,1),
                     logger_address: Address::Tcp("127.0.0.1".to_string(), 1917),
                     balancer_address: Address::Tcp("0.0.0.0".to_string(), 1939),

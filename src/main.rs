@@ -20,7 +20,7 @@ extern crate nes;
 extern crate common_macros;
 
 pub use common_address::Address;
-pub use common_types::{ServerType,ConnectionID};
+pub use common_types::{ServerType,ServerID,ConnectionID};
 
 pub mod properties;
 pub use properties::{Argument,Properties,ArcProperties};

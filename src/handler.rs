@@ -258,11 +258,10 @@ impl Handler {
 
                     HandlerCommand::Familiarity(familiarity_servers) => {
                         let tuple=*familiarity_servers;
-                        warn!("{} {}",tuple.0.len(), tuple.1.len());
                         do_automat_transaction![self.automat.familiarize(&tuple.0, &tuple.1)];
                     },
-                    HandlerCommand::AcceptConnection(server_type,connection_id,address,balancer_connection_id) =>
-                        do_sender_transaction![self.sender.accept_connection(server_type,connection_id,address,balancer_connection_id)],
+                    HandlerCommand::AcceptConnection(server_type,server_id,connection_id,address,balancer_connection_id) =>
+                        do_sender_transaction![self.sender.accept_connection(server_type,server_id,connection_id,address,balancer_connection_id)],
                     HandlerCommand::ConnectionAccepted(server_type,connection_id,set_connection_id) =>
                         do_sender_transaction![self.sender.connection_accepted(server_type,connection_id,set_connection_id)],
                     HandlerCommand::Connected(server_type,connection_id) =>

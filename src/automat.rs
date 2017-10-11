@@ -16,6 +16,7 @@ use ::ThreadSource;
 use ::ArcSender;
 use ::ArcProperties;
 use ::{HandlerCommand};
+use ::ServerID;
 
 use sender::SenderTrait;
 
@@ -71,7 +72,7 @@ macro_rules! do_sender_transaction {
                 return Err( TransactionError::ServerTransactionFailed(error_info) );
             },
             Err(::sender::TransactionError::NoServer(..)) => unreachable!(),
-            Err(::sender::TransactionError::NoServerWithUniqueID(..)) => unreachable!(),
+            Err(::sender::TransactionError::NoServerByConnectionID(..)) => unreachable!(),
         }
     };
 }
@@ -93,7 +94,7 @@ impl Automat {
     }
 
     ///Эта функция запускается первой и отвечает Balancer-у
-    pub fn answer_to_balancer(&self) -> result![TransactionError]{
+    pub fn answer_to_balancer(&self) -> Result<(),TransactionError> {
         try!(self.sender.balancer_sender.send(&HandlerToBalancer::ServerStarted), TransactionError::BalancerCrash, ThreadSource::Handler);
 
         ok!()
@@ -102,9 +103,9 @@ impl Automat {
     ///Выполняет знакомство, если сервер один, то сразу переключает состояние в Working, если несколько, то знакомится.
     ///При переключении в состояние Working, устанавливает состояние и отправляет HandlerCommand::FamiliarityFinished
     pub fn familiarize(&self,
-        storages:&Vec<(MessageConnectionID,String)>,
-        handlers:&Vec<(MessageConnectionID,String)>
-    ) -> result![TransactionError]{
+        storages:&Vec<(ServerID,MessageConnectionID,String)>,
+        handlers:&Vec<(ServerID,MessageConnectionID,String)>
+    ) -> Result<(),TransactionError> {
         let mut state_guard=mutex_lock!(&self.state,TransactionError);
 
         let count=(if storages.len()>0 {1} else {0}) + (if handlers.len()>0 {1} else {0});

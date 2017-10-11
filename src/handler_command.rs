@@ -2,7 +2,7 @@ use ipc_listener;
 use sender;
 
 use common_messages::MessageConnectionID;
-use ::{ServerType,ConnectionID};
+use ::{ServerType,ServerID,ConnectionID};
 
 pub enum HandlerCommand {
     IpcListenerThreadCrash(Box<ipc_listener::Error>),
@@ -16,8 +16,8 @@ pub enum HandlerCommand {
     Task,
 
     //From IPC Listener
-    Familiarity(Box<(Vec<(MessageConnectionID,String)>,Vec<(MessageConnectionID,String)>,usize)>),
-    AcceptConnection(ServerType,ConnectionID,String,ConnectionID),
+    Familiarity(Box<(Vec<(ServerID,MessageConnectionID,String)>,Vec<(ServerID,MessageConnectionID,String)>,usize)>),
+    AcceptConnection(ServerType,ServerID,ConnectionID,String,ConnectionID),
     ConnectionAccepted(ServerType,ConnectionID,ConnectionID),
     Connected(ServerType,ConnectionID),
 
