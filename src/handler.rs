@@ -40,10 +40,12 @@ pub struct Handler {
 }
 
 define_error!( Error,
-    IpcListenerThreadCrash(ipc_listener_error:Box<ipc_listener::Error>, thread_source:ThreadSource) =>
-        "[Source:{2}] IpcListener thread has finished incorrecty(crashed): {1}",
-    BalancerCrash(sender_error:Box<sender::Error>, thread_source:ThreadSource) =>
-        "[Source:{2}] Balancer server has crashed: {1}",
+    IpcListenerThreadCrash(thread_source:ThreadSource) =>
+        "[Source:{1}] IpcListener thread has finished incorrecty(crashed)",
+    BalancerCrash(thread_source:ThreadSource) =>
+        "[Source:{1}] Balancer server has crashed",
+    BalancerCrashed(sender_error:Box<sender::Error>) =>
+        "Balancer server has crashed: {1}",
 
     BrockenChannel() =>
         "Channel for Handler is broken",
@@ -78,7 +80,7 @@ macro_rules! do_automat_transaction {
             Ok(_) => {},
             Err(automat::TransactionError::Poisoned(error_info)) => return Err(Error::Poisoned(error_info)),
             Err(automat::TransactionError::BrockenChannel(error_info)) => return Err(Error::BrockenChannel(error_info)),
-            Err(automat::TransactionError::BalancerCrash(error_info,sender_error,thread_source)) => return Err(Error::BalancerCrash(error_info,sender_error,thread_source)),
+            Err(automat::TransactionError::BalancerCrash(error_info,sender_error,thread_source)) => return Err(Error::BalancerCrashed(error_info,sender_error)),
             Err(automat::TransactionError::ServerTransactionFailed(error_info)) => { //IpcListener не оповещаем и return не делаем тк скоро последует Error.
                 println!("Automat server Transaction failed");
             },
@@ -116,7 +118,7 @@ impl Handler {
 
             try_send![ipc_listener_sender, IpcListenerCommand::Sender(sender.clone())];
 
-            let automat=Automat::new_arc(sender.clone(), properties.clone(), handler_sender.clone());
+            let automat=Automat::new_arc(sender.clone(), properties.clone(), ipc_listener_sender.clone(), handler_sender.clone());
 
             if ipc_listener_sender.send(IpcListenerCommand::Automat(automat.clone())).is_err() {
                 panic!("Can not send Automat");
@@ -131,7 +133,7 @@ impl Handler {
             ) {
                 Ok( handler ) => handler,
                 Err( error ) => {
-                    error!("Handler Error: {}", error);
+                    error!("Handler setup Error: {}", error);
 
                     try_send![ipc_listener_sender, IpcListenerCommand::HandlerSetupError(Box::new(error))];
 
@@ -151,19 +153,17 @@ impl Handler {
                     error!("Handler Error: {}", error);
 
                     match error {
-                        Error::IpcListenerThreadCrash(_,_,source) => {
+                        Error::IpcListenerThreadCrash(_,source) => {
                             //TODO:try to save world
                         },
-                        Error::BalancerCrash(_,e,source) => {
-                            //TODO:try to save world
-                            if source!=ThreadSource::IpcListener {
-                                try_send![handler.ipc_listener_sender, IpcListenerCommand::BalancerCrash(e)];
-                            }
+                        Error::BalancerCrash(_,source) => {},
+                        Error::BalancerCrashed(_,e) => {
+                            try_send![handler.ipc_listener_sender, IpcListenerCommand::BalancerCrash(ThreadSource::Handler)];
 
                             handler.synchronize_finish();
                         },
                         _ => {
-                            try_send![handler.ipc_listener_sender, IpcListenerCommand::HandlerThreadCrash(Box::new(error))];
+                            try_send![handler.ipc_listener_sender, IpcListenerCommand::HandlerThreadCrash(ThreadSource::Handler)];
                         }
                     }
                 }
@@ -179,7 +179,7 @@ impl Handler {
         tasks_queue:ArcTasksQueue,
         sender:ArcSender,
         automat:ArcAutomat
-    ) -> result![Self,Error] {
+    ) -> Result<Self,Error> {
         let handler = Handler{
             handler_receiver,
             ipc_listener_sender,
@@ -191,20 +191,18 @@ impl Handler {
         ok!( handler )
     }
 
+    /// Ждёт, пока IpcListener не готов, тогда посылает ему HandlerIsReady, и тот просыпаются
+    /// Если IpcListener не готов, или SetupError, то паникует
     fn synchronize_setup(&mut self) {
-        //Say to IpcListener that setup is done and wait until setup of IpcListener will be done
-        try_send![self.ipc_listener_sender, IpcListenerCommand::HandlerIsReady];
-
         match self.handler_receiver.recv() {
             Ok( HandlerCommand::IpcListenerIsReady ) => {},
-            Ok( HandlerCommand::IpcListenerSetupError(e) ) => {
-                //TODO: fast finish
-            },
             _ => recv_error!(HandlerCommand::IpcListenerIsReady),
         }
+
+        try_send![self.ipc_listener_sender, IpcListenerCommand::HandlerIsReady];
     }
 
-    fn lifecycle(&mut self) -> result![Error] {
+    fn lifecycle(&mut self) -> Result<(),Error> {
         do_automat_transaction![self.automat.answer_to_balancer()];
 
         self.lifecycle_handle()?;
@@ -215,7 +213,7 @@ impl Handler {
         ok!()
     }
 
-    fn lifecycle_handle(&mut self) -> result![Error] {
+    fn lifecycle_handle(&mut self) -> Result<(),Error> {
         use std::time::SystemTime;
         use std::io::Read;
 
@@ -229,19 +227,15 @@ impl Handler {
                         match self.handler_receiver.try_recv() {
                             Ok(command) => command,
                             Err(std::sync::mpsc::TryRecvError::Empty) => break,
-                            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                                let error=create_err!(ipc_listener::Error::BrockenChannel);
-                                return err!(Error::IpcListenerThreadCrash,Box::new(error),ThreadSource::Handler);
-                            }
+                            Err(std::sync::mpsc::TryRecvError::Disconnected) =>
+                                return err!(Error::IpcListenerThreadCrash, ThreadSource::Handler)
                         }
                     },
                     true => {
                         match self.handler_receiver.recv() {
                             Ok(command) => command,
-                            Err(_) => {
-                                let error=create_err!(ipc_listener::Error::BrockenChannel);
-                                return err!(Error::IpcListenerThreadCrash,Box::new(error),ThreadSource::Handler);
-                            }
+                            Err(_) =>
+                                return err!(Error::IpcListenerThreadCrash, ThreadSource::Handler)
                         }
                     },
                 };
@@ -250,8 +244,8 @@ impl Handler {
                     HandlerCommand::ShutdownReceived => {info!("handler shutdown received"); return ok!();},
                     HandlerCommand::Shutdown => unreachable!(),
                     //Setup Crash
-                    HandlerCommand::IpcListenerThreadCrash(error) => return err!(Error::IpcListenerThreadCrash, error, ThreadSource::IpcListener),
-                    HandlerCommand::BalancerCrash(error) => return err!(Error::BalancerCrash, error, ThreadSource::IpcListener),
+                    HandlerCommand::IpcListenerThreadCrash(source) => return err!(Error::IpcListenerThreadCrash, source),
+                    HandlerCommand::BalancerCrash(source) => return err!(Error::BalancerCrash, source),
                     HandlerCommand::Task => {
                         wait_tasks=false;
                     }
@@ -279,29 +273,30 @@ impl Handler {
         }
     }
 
-    fn lifecycle_shutdown(&mut self) -> result![Error] {
+    fn lifecycle_shutdown(&mut self) -> Result<(),Error> {
         ok!()
     }
 
+    /// Ждёт, пока IpcListener не finished, тогда посылает ему HandlerFinished, и тот просыпаются
+    /// Если IpcListener не готов, или SetupError, то паникует
     fn synchronize_finish(&mut self) {
-        //Say to IpcListener that work is done and wait until work of IpcListener will be done
-        try_send![self.ipc_listener_sender, IpcListenerCommand::HandlerFinished];
-
         match self.handler_receiver.recv() {
             Ok( HandlerCommand::IpcListenerFinished ) => {},
             _ => recv_error!(HandlerCommand::IpcListenerFinished),
         }
+
+        try_send![self.ipc_listener_sender, IpcListenerCommand::HandlerFinished];
     }
 
-    fn handle_sender_command(&self, sender_command:SenderCommand) -> result![Error] {
+    fn handle_sender_command(&self, sender_command:SenderCommand) -> Result<(),Error> {
         use common_messages::ToBalancerMessage;
 
         match sender_command {
             SenderCommand::ConnectionFailed(server_type, connection_id, error) => {//TODO насколько фатально?
-                try!(self.sender.balancer_sender.send(&HandlerToBalancer::connection_failed(server_type,connection_id)), Error::BalancerCrash, ThreadSource::Handler);
+                try!(self.sender.balancer_sender.send(&HandlerToBalancer::connection_failed(server_type,connection_id)), Error::BalancerCrashed);
             },
             SenderCommand::AcceptConnectionFailed(server_type, connection_id, error) => {
-                try!(self.sender.balancer_sender.send(&HandlerToBalancer::connection_failed(server_type,connection_id)), Error::BalancerCrash, ThreadSource::Handler);
+                try!(self.sender.balancer_sender.send(&HandlerToBalancer::connection_failed(server_type,connection_id)), Error::BalancerCrashed);
             },
             SenderCommand::TransactionFailed(server_type, connection_id, error, basic_state) => {
                 warn!("Sender transaction failed {} {} {}", server_type, connection_id, error);

@@ -3,12 +3,13 @@ use sender;
 
 use common_messages::MessageConnectionID;
 use ::{ServerType,ServerID,ConnectionID};
+use ::ThreadSource;
 
 pub enum HandlerCommand {
-    IpcListenerThreadCrash(Box<ipc_listener::Error>),
-    BalancerCrash(Box<sender::Error>),
+    IpcListenerThreadCrash(ThreadSource),
+    BalancerCrash(ThreadSource),
 
-    IpcListenerSetupError(Box<ipc_listener::Error>),
+    IpcListenerSetupError,
     IpcListenerIsReady,
     ShutdownReceived,
     Shutdown,

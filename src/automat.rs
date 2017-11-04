@@ -10,6 +10,7 @@ use std::sync::{Arc,Mutex,RwLock};
 use common_messages::MessageConnectionID;
 use common_messages::HandlerToBalancer;
 
+use ipc_listener::IpcListenerSender;
 use handler::HandlerSender;
 
 use ::ThreadSource;
@@ -26,9 +27,15 @@ pub type ArcAutomat=Arc<Automat>;
 pub struct Automat {
     properties:ArcProperties,
     sender:ArcSender,
-//    sender:ArcSender,
-    state:Mutex<State>,
-    handler_sender:Mutex<HandlerSender>,
+    inner:Mutex<InnerAutomat>,
+}
+
+///Внутренний Автомат
+pub struct InnerAutomat {
+    state:State,
+    ipc_listener_sender:IpcListenerSender,
+    handler_sender:HandlerSender,
+    thread_is_ready:usize,
 }
 
 ///Состояния Автомата
@@ -67,8 +74,6 @@ macro_rules! do_sender_transaction {
             Err(::sender::TransactionError::Poisoned(error_info)) => return Err( TransactionError::Poisoned(error_info) ),
             Err(::sender::TransactionError::BrockenChannel(error_info)) => return Err( TransactionError::BrockenChannel(error_info) ),
             Err(::sender::TransactionError::TransactionFailed(error_info)) => {//TODO пока хз что делать
-                let handler_sender=mutex_lock!(&$handler_sender,TransactionError);
-                //channel_send!(handler_sender,HandlerCommand::Error,TransactionError);
                 return Err( TransactionError::ServerTransactionFailed(error_info) );
             },
             Err(::sender::TransactionError::NoServer(..)) => unreachable!(),
@@ -79,19 +84,27 @@ macro_rules! do_sender_transaction {
 
 impl Automat {
     ///Создаёт Автомат
-    pub fn new(sender:ArcSender, properties:ArcProperties, handler_sender:HandlerSender) -> Self {
+    pub fn new(sender:ArcSender, properties:ArcProperties, ipc_listener_sender:IpcListenerSender, handler_sender:HandlerSender) -> Self {
+        let inner=InnerAutomat{
+            state:State::Initialization,
+            ipc_listener_sender,
+            handler_sender,
+            thread_is_ready:0
+        };
+
+
         Automat {
             properties:properties,
             sender:sender,
-            state:Mutex::new(State::Initialization),
-            handler_sender:Mutex::new(handler_sender),
+            inner:Mutex::new(inner)
         }
     }
 
     ///Создаёт ArcAutomat или Arc<Automat>
-    pub fn new_arc(sender:ArcSender, properties:ArcProperties, handler_sender:HandlerSender) -> ArcAutomat {
-        Arc::new( Automat::new(sender, properties, handler_sender) )
+    pub fn new_arc(sender:ArcSender, properties:ArcProperties, ipc_listener_sender:IpcListenerSender, handler_sender:HandlerSender) -> ArcAutomat {
+        Arc::new( Automat::new(sender, properties, ipc_listener_sender, handler_sender) )
     }
+
 
     ///Эта функция запускается первой и отвечает Balancer-у
     pub fn answer_to_balancer(&self) -> Result<(),TransactionError> {
@@ -106,16 +119,16 @@ impl Automat {
         storages:&Vec<(ServerID,MessageConnectionID,String)>,
         handlers:&Vec<(ServerID,MessageConnectionID,String)>
     ) -> Result<(),TransactionError> {
-        let mut state_guard=mutex_lock!(&self.state,TransactionError);
+        let mut inner=mutex_lock!(&self.inner,TransactionError);
 
         let count=(if storages.len()>0 {1} else {0}) + (if handlers.len()>0 {1} else {0});
 
         if count==0 {
-            *state_guard=State::Working;
+            inner.state=State::Working;
             try!(self.sender.balancer_sender.send(&HandlerToBalancer::FamiliarityFinished), TransactionError::BalancerCrash, ThreadSource::Handler);
         }else{
-            *state_guard=State::Familiarity(count);
-            do_sender_transaction![&self.handler_sender, self.sender.familiarize(storages, handlers)];
+            inner.state=State::Familiarity(count);
+            do_sender_transaction![&inner.handler_sender, self.sender.familiarize(storages, handlers)];
         }
 
         ok!()
@@ -123,10 +136,10 @@ impl Automat {
 
     ///Вызывается, когда Handler познакомился с серверами определённого типа, уменьшаем количество серверов(типов), с которыми надо познакомиться,
     ///Если это число становится равным 0, то переключаемся в состояние Working, при этом отправляется HandlerCommand::FamiliarityFinished
-    pub fn connected_to_all(&self) -> result![TransactionError] {
-        let mut state_guard=mutex_lock!(&self.state,TransactionError);
+    pub fn connected_to_all(&self) -> Result<(),TransactionError> {
+        let mut inner=mutex_lock!(&self.inner,TransactionError);
 
-        let mut next_state=match *state_guard {
+        let mut next_state=match inner.state {
             State::Familiarity(ref mut count) => {
                 *count-=1;
 
@@ -137,7 +150,7 @@ impl Automat {
 
         if next_state {
             info!("Working");
-            *state_guard=State::Working;
+            inner.state=State::Working;
             try!(self.sender.balancer_sender.send(&HandlerToBalancer::FamiliarityFinished), TransactionError::BalancerCrash, ThreadSource::Handler);
         }
 
@@ -145,19 +158,19 @@ impl Automat {
     }
 
     ///Переводит сервер в shutdown стадию, если он уже находится в этой стадии, ничего не происходит
-    pub fn shutdown(&self) -> result![TransactionError] {
-        let mut state_guard=mutex_lock!(&self.state,TransactionError);
+    pub fn shutdown(&self) -> Result<(),TransactionError> {
+        let mut inner=mutex_lock!(&self.inner,TransactionError);
 
-        match state_guard.clone() {
-            State::Initialization => *state_guard=State::Shutdown,
+        match inner.state.clone() {
+            State::Initialization => inner.state=State::Shutdown,
             State::Familiarity(_) => {
-                *state_guard=State::Shutdown;
+                inner.state=State::Shutdown;
 
                 //TODO попрощаться с серверами
                 //do_sender_transaction![self.handler_sender, self.sender.handlers.shutdown_all()];
             },
             State::Working => {
-                *state_guard=State::Shutdown;
+                inner.state=State::Shutdown;
 
                 //TODO попрощаться с серверами
 
