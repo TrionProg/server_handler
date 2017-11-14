@@ -240,6 +240,19 @@ impl Handler {
                     HandlerCommand::SenderCommand(sender_command) =>
                         self.handle_sender_command(sender_command)?,
 
+                    HandlerCommand::GenerateMap(map_name) => {
+                        //self.resource_heap.create_map(map_name)?;
+                        do_automat_transaction![self.automat.process_signal(AutomatSignal::ThreadIsReady(ThreadSource::Handler))];
+                    },
+                    HandlerCommand::MapGenerated =>
+                        try!(self.sender.balancer_sender.send(&HandlerToBalancer::MapGenerated), Error::BalancerCrashed),
+                    HandlerCommand::CloseMap => {
+                        //self.resource_heap.close_map()?;
+                        do_automat_transaction![self.automat.process_signal(AutomatSignal::ThreadIsReady(ThreadSource::Handler))];
+                    },
+                    HandlerCommand::MapClosed =>
+                        try!(self.sender.balancer_sender.send(&HandlerToBalancer::MapClosed), Error::BalancerCrashed),
+
                     _ => panic!("Unexpected type of HandlerCommand")
                 }
             }

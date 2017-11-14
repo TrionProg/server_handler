@@ -10,8 +10,7 @@ use std::ops::DerefMut;
 
 use ipc_listener::IpcListenerSender;
 use ipc_listener::IpcListenerCommand;
-use handler::HandlerSender;
-use handler::HandlerCommand;
+use handler::{HandlerSender,HandlerCommand};
 
 use sender::FamiliarityLists;
 
@@ -20,15 +19,16 @@ use ::ConnectionID;
 use ::ArcProperties;
 use ::ThreadSource;
 
-const THREADS_NO_READY:usize=0;
-const THREADS_ARE_READY:usize=7;
+const THREADS_NOT_READY:usize=0;
+const THREADS_ARE_READY:usize=3;
 const CONNECTED_TO_ALL:usize=1<<ServerType::Storage as usize | 1<<ServerType::Handler as usize;
 
 pub type ArcAutomat=Arc<Automat>;
 
 pub enum AutomatCommand{
+    GenerateMap(String),
+    CloseMap,
     /*
-    CreateMap(String),
     LoadMap(String),
     CloseMap,
     //EachSecond,
@@ -41,7 +41,8 @@ pub enum AutomatCommand{
 
 pub enum AutomatSignal{
     Familiarize(Box<FamiliarityLists>),
-    ConnectedToServers(ServerType)
+    ConnectedToServers(ServerType),
+    ThreadIsReady(ThreadSource),
 }
 
 ///Конечный Автомат
@@ -83,6 +84,8 @@ pub enum WorkingState {
     MapGeneration,
     ///Загрузка карты
     MapLoading(ServerType),
+    ///Карта создана/загружена
+    MapIsReady,
     ///Игра
     Playing,
     ///Закрытие карты
@@ -124,7 +127,7 @@ impl Automat {
             state:State::Initialization,
             ipc_listener_sender,
             handler_sender,
-            thread_is_ready:0,
+            thread_is_ready:THREADS_NOT_READY,
             commands_queue:VecDeque::with_capacity(16)
         };
 
@@ -163,43 +166,28 @@ impl Automat {
 
         ok!(automat.state.clone())
     }
-
-    pub fn thread_is_ready(&self, thread:ThreadSource) -> Result<(),TransactionError> {
-        ok!()
-    }
-    /*
-        pub fn generate_map(&self,map_name:String) -> Result<(),TransactionError> {
-            use common_messages::BalancerToStorage;
-
-            let mut state_guard=mutex_lock!(&self.state,TransactionError);
-            match state_guard.clone() {
-                State::Working(_) => {
-                    *state_guard=State::Working(WorkingState::MapGeneration);
-
-                    info!("Generate map");
-                    do_server_transaction![self.balancer_sender, self.servers.storages.send(ConnectionID::new(0,1),0,&BalancerToStorage::GenerateMap(map_name))];
-                },
-                _ => {}//TODO
-            }
-
-            ok!()
-        }
-     */
 }
 
 impl InnerAutomat {
     fn process_command(&mut self, command:AutomatCommand) -> Result<(),TransactionError> {
         match command {
+            AutomatCommand::GenerateMap(map_name) =>
+                self.process_command_generate_map(map_name),
             /*
-            AutomatCommand::CreateMap(map_name) =>
-                self.process_command_create_map(map_name),
             AutomatCommand::LoadMap(map_name) =>
                 self.process_command_load_map(map_name),
+                */
             AutomatCommand::CloseMap =>
                 self.process_command_close_map(),
-                */
             AutomatCommand::Shutdown(restart) =>
                 self.process_command_shutdown(restart),
+        }
+    }
+
+    fn process_next_command(&mut self) -> Result<(),TransactionError> {
+        match self.commands_queue.pop_front() {
+            Some(command) => self.process_command(command),
+            None => ok!()
         }
     }
 
@@ -207,6 +195,7 @@ impl InnerAutomat {
         match signal {
             AutomatSignal::Familiarize(familiarity_lists) => self.process_signal_familiarize(familiarity_lists),
             AutomatSignal::ConnectedToServers(server_type) => self.process_signal_connected_to_servers(server_type),
+            AutomatSignal::ThreadIsReady(thread) => self.process_signal_thread_is_ready(thread),
         }
     }
 
@@ -217,24 +206,78 @@ impl InnerAutomat {
             _ => true
         }
     }
-    /*
-        fn process_command_create_map(&mut self,map_name:String) -> Result<(),TransactionError> {
-            match self.state.clone() {
-                State::Working(WorkingState::Nope) => {//Теперь Storage создаст карту
-                    self.state=State::Working(WorkingState::MapGeneration(ServerType::Storage));
 
-                    //do_server_transaction![self.balancer_sender, servers.storages.send_all(BalancerToStorage::CreateMap(map_name))];
-                },
-                State::Working(WorkingState::Playing) => {
-                    self.commands_queue.push_front(AutomatCommand::GenerateMap(map_name));
-                    self.process_command_close_map()?;
-                },
-                _ => unreachable!(),
-            }
+    fn process_command_generate_map(&mut self,map_name:String) -> Result<(),TransactionError> {
+        match self.state.clone() {
+            State::Working(WorkingState::Nope) => {//Теперь Handler создаст карту
+                debug!("Generating map \"{}\"",map_name);
+                self.state=State::Working(WorkingState::MapGeneration);
+                self.thread_is_ready=THREADS_NOT_READY;
 
-            ok!()
+                channel_send!(self.ipc_listener_sender, IpcListenerCommand::GenerateMap, TransactionError);
+                channel_send!(self.handler_sender, HandlerCommand::GenerateMap(map_name), TransactionError);
+            },
+            State::Working(WorkingState::MapIsReady) | State::Working(WorkingState::Playing) => {
+                self.commands_queue.push_front(AutomatCommand::GenerateMap(map_name));
+                self.process_command_close_map()?;
+            },
+            _ => unreachable!(),
         }
 
+        ok!()
+    }
+
+    fn process_command_close_map(&mut self) -> Result<(),TransactionError> {
+        match self.state.clone() {
+            State::Working(WorkingState::Nope) => self.process_next_command()?,
+            State::Working(WorkingState::MapIsReady) | State::Working(WorkingState::Playing) => {
+                debug!("Closing map");
+                self.state=State::Working(WorkingState::MapClosing);
+                self.thread_is_ready=THREADS_NOT_READY;
+
+                channel_send!(self.ipc_listener_sender, IpcListenerCommand::CloseMap, TransactionError);
+                channel_send!(self.handler_sender, HandlerCommand::CloseMap, TransactionError);
+            },
+            _ => unreachable!(),
+        }
+
+        ok!()
+    }
+
+    fn process_command_shutdown(&mut self, restart:bool) -> Result<(),TransactionError> {
+        match self.state.clone() {
+            State::Working(working_state) => {
+                match working_state {
+                    WorkingState::Nope => {
+                        self.state=State::Finished;
+                        channel_send!(self.ipc_listener_sender,IpcListenerCommand::Shutdown,TransactionError);
+                        //TODO попрощаться с серверами
+                        channel_send!(self.handler_sender,HandlerCommand::Shutdown,TransactionError);
+                    },
+                    WorkingState::MapIsReady | WorkingState::Playing => {
+                        self.commands_queue.push_front(AutomatCommand::Shutdown(restart));
+                        self.process_command_close_map()?;
+                    },
+                    _ => unreachable!()
+                }
+            },
+            State::Familiarity(_) => {
+                self.state=State::Finished;
+                channel_send!(self.ipc_listener_sender,IpcListenerCommand::Shutdown,TransactionError);
+                //TODO попрощаться с серверами
+                channel_send!(self.handler_sender,HandlerCommand::Shutdown,TransactionError);
+            },
+            State::Initialization => {
+                self.state=State::Finished;
+                channel_send!(self.ipc_listener_sender,IpcListenerCommand::Shutdown,TransactionError);
+                channel_send!(self.handler_sender,HandlerCommand::Shutdown,TransactionError);
+            },
+            _ => {}
+        }
+
+        ok!()
+    }
+    /*
         fn process_command_load_map(&mut self,map_name:String) -> Result<(),TransactionError> {
             match self.state.clone() {
                 State::Working(WorkingState::Nope) => {
@@ -251,21 +294,8 @@ impl InnerAutomat {
 
             ok!()
         }
-
-        fn process_command_close_map(&mut self) -> Result<(),TransactionError> {
-            match self.state.clone() {
-                State::Working(WorkingState::Nope) => {},
-                State::Working(WorkingState::Playing) => {
-                    self.state=State::Working(WorkingState::MapClosing(ServerType::Handler)); //TODO change to Public
-
-                    //do_server_transaction![self.balancer_sender, self.servers.handlers.send_all(BalancerToHandler::CloseMap)];
-                },
-                _ => unreachable!(),
-            }
-
-            ok!()
-        }
     */
+
     ///Выполняет знакомство.
     ///* Если сервер один, то сразу переключает состояние в Working, отправляет Balancer-у FamiliarityFinished
     ///* Если несколько, то устанавливает состояние в Familiarity, Handler знакомится
@@ -288,7 +318,7 @@ impl InnerAutomat {
 
     ///Вызывается, когда Handler познакомился с серверами определённого типа, уменьшаем количество серверов(типов), с которыми надо познакомиться,
     ///Если это число становится равным 0, то переключаемся в состояние Working, при этом отправляется HandlerCommand::FamiliarityFinished
-    pub fn process_signal_connected_to_servers(&mut self, server_type:ServerType) -> Result<(),TransactionError> {
+    fn process_signal_connected_to_servers(&mut self, server_type:ServerType) -> Result<(),TransactionError> {
         let mut next_state=match self.state {
             State::Familiarity(ref mut connected_to_servers) => {
                 *connected_to_servers|=1<<server_type as usize;
@@ -306,32 +336,33 @@ impl InnerAutomat {
         ok!()
     }
 
-    fn process_command_shutdown(&mut self, restart:bool) -> Result<(),TransactionError> {
-        match self.state.clone() {
-            State::Working(working_state) => {
-                //TODO
+    ///Сигнализирует, что поток готов, если готовы все потоки, переключаемся на следующую стадию
+    fn process_signal_thread_is_ready(&mut self,thread:ThreadSource) -> Result<(),TransactionError> {
+        self.thread_is_ready|=1<<thread as usize;
 
-                self.state=State::Finished;
-                channel_send!(self.ipc_listener_sender,IpcListenerCommand::Shutdown,TransactionError);
-                channel_send!(self.handler_sender,HandlerCommand::Shutdown,TransactionError);
-            },
-            State::Familiarity(_) => {
-                self.state=State::Finished;
-                channel_send!(self.ipc_listener_sender,IpcListenerCommand::Shutdown,TransactionError);
-                //TODO попрощаться с серверами
-                channel_send!(self.handler_sender,HandlerCommand::Shutdown,TransactionError);
-            },
-            State::Initialization => {
-                self.state=State::Finished;
-                channel_send!(self.ipc_listener_sender,IpcListenerCommand::Shutdown,TransactionError);
-                channel_send!(self.handler_sender,HandlerCommand::Shutdown,TransactionError);
-            },
-            _ => {}
+        if self.thread_is_ready==THREADS_ARE_READY {
+            match self.state.clone() {
+                State::Working(working_state) => {
+                    match working_state {
+                        WorkingState::MapGeneration => {
+                            self.state = State::Working(WorkingState::MapIsReady);
+                            channel_send!(self.handler_sender, HandlerCommand::MapGenerated, TransactionError);
+                            self.process_next_command()?;
+                        },
+                        WorkingState::MapClosing => {
+                            self.state = State::Working(WorkingState::Nope);
+                            channel_send!(self.handler_sender, HandlerCommand::MapClosed, TransactionError);
+                            self.process_next_command()?;
+                        },
+                        _ => unreachable!()
+                    }
+                },
+                _ => unreachable!()
+            }
         }
 
         ok!()
     }
-
     /*
 
     fn process_signal_map_created(&mut self) -> Result<(),TransactionError> {

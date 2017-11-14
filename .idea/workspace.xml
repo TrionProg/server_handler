@@ -2,25 +2,11 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="aaeced63-e9ee-4b4b-b299-260030b294ec" name="Default" comment="">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/automat_old.rs" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/handler/error.rs" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/handler/mod.rs" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/ipc_listener/commands.rs" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/ipc_listener/error.rs" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/ipc_listener/mod.rs" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/.idea/compiler.xml" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/.idea/copyright/profiles_settings.xml" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/.idea/libraries/Cargo__handler_.xml" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/.idea/libraries/Rust__handler_.xml" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/src/handler/handler_command.rs" afterPath="" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/src/handler.rs" afterPath="$PROJECT_DIR$/src/handler/handler.rs" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/src/ipc_listener.rs" afterPath="$PROJECT_DIR$/src/ipc_listener/ipc_listener.rs" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/misc.xml" afterPath="$PROJECT_DIR$/.idea/misc.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/handler.iml" afterPath="$PROJECT_DIR$/handler.iml" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/automat.rs" afterPath="$PROJECT_DIR$/src/automat.rs" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/main.rs" afterPath="$PROJECT_DIR$/src/main.rs" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/sender.rs" afterPath="$PROJECT_DIR$/src/sender.rs" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/handler/commands.rs" afterPath="$PROJECT_DIR$/src/handler/commands.rs" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/handler/handler.rs" afterPath="$PROJECT_DIR$/src/handler/handler.rs" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/ipc_listener/commands.rs" afterPath="$PROJECT_DIR$/src/ipc_listener/commands.rs" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/ipc_listener/ipc_listener.rs" afterPath="$PROJECT_DIR$/src/ipc_listener/ipc_listener.rs" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <ignored path="$PROJECT_DIR$/out/" />
@@ -33,20 +19,6 @@
   </component>
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
-      <file leaf-file-name="handler.rs" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/src/handler/handler.rs">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="266">
-              <caret line="14" column="44" lean-forward="false" selection-start-line="14" selection-start-column="44" selection-end-line="14" selection-end-column="44" />
-              <folding>
-                <element signature="e#5110#5311#0" expanded="false" />
-                <element signature="e#5506#5776#0" expanded="false" />
-                <element signature="e#9905#10178#0" expanded="false" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
       <file leaf-file-name="main.rs" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/src/main.rs">
           <provider selected="true" editor-type-id="text-editor">
@@ -74,11 +46,32 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="automat.rs" pinned="false" current-in-tab="false">
+      <file leaf-file-name="automat.rs" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/src/automat.rs">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="364">
-              <caret line="325" column="102" lean-forward="false" selection-start-line="325" selection-start-column="102" selection-end-line="325" selection-end-column="102" />
+            <state relative-caret-position="171">
+              <caret line="229" column="75" lean-forward="false" selection-start-line="229" selection-start-column="75" selection-end-line="229" selection-end-column="75" />
+              <folding>
+                <element signature="e#4819#5309#0" expanded="false" />
+                <element signature="e#5381#5532#0" expanded="false" />
+                <element signature="e#5620#5987#0" expanded="false" />
+                <element signature="e#6033#6216#0" expanded="false" />
+                <element signature="e#6312#7164#0" expanded="false" />
+                <element signature="e#7241#7900#0" expanded="false" />
+                <element signature="e#7990#9506#0" expanded="false" />
+                <element signature="e#9511#10265#0" expanded="false" />
+                <element signature="e#10610#11308#0" expanded="false" />
+                <element signature="e#11705#12225#0" expanded="false" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="commands.rs" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/src/ipc_listener/commands.rs">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="475">
+              <caret line="25" column="4" lean-forward="false" selection-start-line="25" selection-start-column="4" selection-end-line="25" selection-end-column="9" />
               <folding />
             </state>
           </provider>
@@ -87,29 +80,40 @@
       <file leaf-file-name="commands.rs" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/src/handler/commands.rs">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="76">
-              <caret line="4" column="44" lean-forward="false" selection-start-line="4" selection-start-column="44" selection-end-line="4" selection-end-column="44" />
+            <state relative-caret-position="371">
+              <caret line="41" column="16" lean-forward="false" selection-start-line="41" selection-start-column="16" selection-end-line="41" selection-end-column="16" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="commands.rs" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/src/ipc_listener/commands.rs">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="0">
-              <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-              <folding />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="ipc_listener.rs" pinned="false" current-in-tab="true">
+      <file leaf-file-name="ipc_listener.rs" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/src/ipc_listener/ipc_listener.rs">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="288">
-              <caret line="202" column="21" lean-forward="true" selection-start-line="202" selection-start-column="21" selection-end-line="202" selection-end-column="21" />
-              <folding />
+            <state relative-caret-position="-1080">
+              <caret line="206" column="70" lean-forward="false" selection-start-line="206" selection-start-column="70" selection-end-line="206" selection-end-column="70" />
+              <folding>
+                <element signature="e#1317#4636#0" expanded="false" />
+                <element signature="e#4893#5429#0" expanded="false" />
+                <element signature="e#5599#5901#0" expanded="false" />
+                <element signature="e#5951#6043#0" expanded="false" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="handler.rs" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/src/handler/handler.rs">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="193">
+              <caret line="250" column="75" lean-forward="true" selection-start-line="250" selection-start-column="75" selection-end-line="250" selection-end-column="75" />
+              <folding>
+                <element signature="e#1855#4889#0" expanded="false" />
+                <element signature="e#5110#5311#0" expanded="false" />
+                <element signature="e#5506#5776#0" expanded="false" />
+                <element signature="e#5826#6057#0" expanded="false" />
+                <element signature="e#10796#11069#0" expanded="false" />
+              </folding>
             </state>
           </provider>
         </entry>
@@ -151,11 +155,12 @@
     <option name="CHANGED_PATHS">
       <list>
         <option value="$PROJECT_DIR$/src/automat_old.rs" />
-        <option value="$PROJECT_DIR$/src/automat.rs" />
-        <option value="$PROJECT_DIR$/src/handler/commands.rs" />
         <option value="$PROJECT_DIR$/src/main.rs" />
-        <option value="$PROJECT_DIR$/src/handler/handler.rs" />
+        <option value="$PROJECT_DIR$/src/handler/commands.rs" />
+        <option value="$PROJECT_DIR$/src/ipc_listener/commands.rs" />
         <option value="$PROJECT_DIR$/src/ipc_listener/ipc_listener.rs" />
+        <option value="$PROJECT_DIR$/src/handler/handler.rs" />
+        <option value="$PROJECT_DIR$/src/automat.rs" />
       </list>
     </option>
   </component>
@@ -383,14 +388,6 @@
     <watches-manager />
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/src/ipc_listener/commands.rs">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="0">
-          <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/src/automat_old.rs">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="208">
@@ -414,22 +411,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/src/automat.rs">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="364">
-          <caret line="325" column="102" lean-forward="false" selection-start-line="325" selection-start-column="102" selection-end-line="325" selection-end-column="102" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/src/handler/commands.rs">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="76">
-          <caret line="4" column="44" lean-forward="false" selection-start-line="4" selection-start-column="44" selection-end-line="4" selection-end-column="44" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/src/main.rs">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="342">
@@ -438,23 +419,65 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/src/handler/handler.rs">
+    <entry file="file://$PROJECT_DIR$/src/handler/commands.rs">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="266">
-          <caret line="14" column="44" lean-forward="false" selection-start-line="14" selection-start-column="44" selection-end-line="14" selection-end-column="44" />
-          <folding>
-            <element signature="e#5110#5311#0" expanded="false" />
-            <element signature="e#5506#5776#0" expanded="false" />
-            <element signature="e#9905#10178#0" expanded="false" />
-          </folding>
+        <state relative-caret-position="371">
+          <caret line="41" column="16" lean-forward="false" selection-start-line="41" selection-start-column="16" selection-end-line="41" selection-end-column="16" />
+          <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/src/ipc_listener/ipc_listener.rs">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="288">
-          <caret line="202" column="21" lean-forward="true" selection-start-line="202" selection-start-column="21" selection-end-line="202" selection-end-column="21" />
+        <state relative-caret-position="-1080">
+          <caret line="206" column="70" lean-forward="false" selection-start-line="206" selection-start-column="70" selection-end-line="206" selection-end-column="70" />
+          <folding>
+            <element signature="e#1317#4636#0" expanded="false" />
+            <element signature="e#4893#5429#0" expanded="false" />
+            <element signature="e#5599#5901#0" expanded="false" />
+            <element signature="e#5951#6043#0" expanded="false" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/src/ipc_listener/commands.rs">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="475">
+          <caret line="25" column="4" lean-forward="false" selection-start-line="25" selection-start-column="4" selection-end-line="25" selection-end-column="9" />
           <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/src/handler/handler.rs">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="193">
+          <caret line="250" column="75" lean-forward="true" selection-start-line="250" selection-start-column="75" selection-end-line="250" selection-end-column="75" />
+          <folding>
+            <element signature="e#1855#4889#0" expanded="false" />
+            <element signature="e#5110#5311#0" expanded="false" />
+            <element signature="e#5506#5776#0" expanded="false" />
+            <element signature="e#5826#6057#0" expanded="false" />
+            <element signature="e#10796#11069#0" expanded="false" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/src/automat.rs">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="171">
+          <caret line="229" column="75" lean-forward="false" selection-start-line="229" selection-start-column="75" selection-end-line="229" selection-end-column="75" />
+          <folding>
+            <element signature="e#4819#5309#0" expanded="false" />
+            <element signature="e#5381#5532#0" expanded="false" />
+            <element signature="e#5620#5987#0" expanded="false" />
+            <element signature="e#6033#6216#0" expanded="false" />
+            <element signature="e#6312#7164#0" expanded="false" />
+            <element signature="e#7241#7900#0" expanded="false" />
+            <element signature="e#7990#9506#0" expanded="false" />
+            <element signature="e#9511#10265#0" expanded="false" />
+            <element signature="e#10610#11308#0" expanded="false" />
+            <element signature="e#11705#12225#0" expanded="false" />
+          </folding>
         </state>
       </provider>
     </entry>

@@ -28,14 +28,24 @@ pub enum HandlerCommand {
     Connected(ServerType,ConnectionID),
     EachSecond,
 
-    //From automat
+    SenderCommand(SenderCommand),
+
+    //To Automat
+    AutomatCommand(AutomatCommand),
+    AutomatSignal(AutomatSignal),
+
+    //From Automat
     Familiarize(Box<FamiliarityLists>),
     FamiliarityFinished,
 
-    SenderCommand(SenderCommand),
+    GenerateMap(String),
+    MapGenerated,
+    //LoadMap(String),
+    CloseMap,
+    MapClosed,
+    //Play,
 
-    AutomatCommand(AutomatCommand),
-    AutomatSignal(AutomatSignal)
+
 }
 
 //From Sender

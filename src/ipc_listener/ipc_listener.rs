@@ -198,7 +198,13 @@ impl IpcListener {
                     match command {
                         IpcListenerCommand::HandlerThreadCrash(source) => return err!(Error::HandlerThreadCrash, source),
                         IpcListenerCommand::BalancerCrash(source) => return err!(Error::BalancerCrash, source),
-                        IpcListenerCommand::Shutdown => unreachable!(),//Мы хотим BalancerToHandler::Shutdown
+
+                        IpcListenerCommand::Shutdown => return ok!(),
+
+                        IpcListenerCommand::GenerateMap =>
+                            channel_send!(self.handler_sender, HandlerCommand::AutomatSignal(AutomatSignal::ThreadIsReady(ThreadSource::IpcListener))),
+                        IpcListenerCommand::CloseMap =>
+                            channel_send!(self.handler_sender, HandlerCommand::AutomatSignal(AutomatSignal::ThreadIsReady(ThreadSource::IpcListener))),
                         _ => warn!("Unexpected type of IpcListenerCommand"),
                     }
                 }

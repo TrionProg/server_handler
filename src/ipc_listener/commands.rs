@@ -19,5 +19,10 @@ pub enum IpcListenerCommand {
     HandlerSetupError(Box<handler::Error>),
     HandlerIsReady,
     Shutdown,
-    HandlerFinished
+    HandlerFinished,
+
+    GenerateMap,
+    //LoadMap,
+    CloseMap,
+    //Play
 }
