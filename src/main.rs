@@ -25,8 +25,12 @@ pub use common_types::{ServerType,ServerID,ConnectionID};
 pub mod properties;
 pub use properties::{Argument,Properties,ArcProperties};
 
+#[macro_use]
+pub mod automat;
+pub use self::automat::{Automat,ArcAutomat};
+
 pub mod ipc_listener;
-pub use self::ipc_listener::{IpcListener};
+pub use self::ipc_listener::IpcListener;
 //pub use
 pub mod handler;
 pub use self::handler::Handler;
@@ -39,12 +43,6 @@ pub use self::tasks_queue::{TasksQueue,ArcTasksQueue};
 
 pub mod sender;
 pub use self::sender::{Sender,ArcSender};
-
-pub mod handler_command;
-pub use handler_command::HandlerCommand;
-
-pub mod automat;
-pub use self::automat::{Automat,ArcAutomat};
 
 #[derive(Debug,Copy,Clone,Eq,PartialEq)]
 pub enum ThreadSource{

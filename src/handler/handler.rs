@@ -1,21 +1,18 @@
 use std;
-//use common_messages;
+use nes::{ErrorInfo,ErrorInfoTrait};
 use sender;
 use nanomsg;
 use automat;
-use nes::{ErrorInfo,ErrorInfoTrait};
+use ipc_listener;
 
 use std::io::Write;
 use std::thread::JoinHandle;
 use std::collections::HashSet;
 
-use ipc_listener;
 use ipc_listener::{IpcListenerSender, IpcListenerCommand};
 
 use sender::SenderTrait;
-
-use ::HandlerCommand;
-use handler_command::SenderCommand;
+use automat::{AutomatCommand,AutomatSignal};
 
 use ::ArcProperties;
 use ::{TasksQueue, ArcTasksQueue};
@@ -24,6 +21,9 @@ use ::{Automat, ArcAutomat};
 use ::ThreadSource;
 use ::ServerType;
 use ::ConnectionID;
+
+use super::Error;
+use super::{HandlerCommand,SenderCommand};
 
 use common_messages::{HandlerToBalancer};
 use common_messages::MessageConnectionID;
@@ -38,22 +38,6 @@ pub struct Handler {
     sender:ArcSender,
     automat:ArcAutomat,
 }
-
-define_error!( Error,
-    IpcListenerThreadCrash(thread_source:ThreadSource) =>
-        "[Source:{1}] IpcListener thread has finished incorrecty(crashed)",
-    BalancerCrash(thread_source:ThreadSource) =>
-        "[Source:{1}] Balancer server has crashed",
-    BalancerCrashed(sender_error:Box<sender::Error>) =>
-        "Balancer server has crashed: {1}",
-
-    BrockenChannel() =>
-        "Channel for Handler is broken",
-    Poisoned() =>
-        "Handler thread has poisoned mutex",
-    Other(message:String) =>
-        "{}"
-);
 
 macro_rules! do_sender_transaction {
     [$operation:expr] => {
@@ -70,20 +54,6 @@ macro_rules! do_sender_transaction {
             Err(sender::TransactionError::Poisoned(error_info)) => return Err(Error::Poisoned(error_info)),
             Err(sender::TransactionError::BrockenChannel(error_info)) => return Err(Error::BrockenChannel(error_info)),
             Err(e) => {warn!("{}",e);},
-        }
-    };
-}
-
-macro_rules! do_automat_transaction {
-    [$operation:expr] => {
-        match $operation {
-            Ok(_) => {},
-            Err(automat::TransactionError::Poisoned(error_info)) => return Err(Error::Poisoned(error_info)),
-            Err(automat::TransactionError::BrockenChannel(error_info)) => return Err(Error::BrockenChannel(error_info)),
-            Err(automat::TransactionError::BalancerCrash(error_info,sender_error,thread_source)) => return Err(Error::BalancerCrashed(error_info,sender_error)),
-            Err(automat::TransactionError::ServerTransactionFailed(error_info)) => { //IpcListener не оповещаем и return не делаем тк скоро последует Error.
-                println!("Automat server Transaction failed");
-            },
         }
     };
 }
@@ -118,7 +88,7 @@ impl Handler {
 
             try_send![ipc_listener_sender, IpcListenerCommand::Sender(sender.clone())];
 
-            let automat=Automat::new_arc(sender.clone(), properties.clone(), ipc_listener_sender.clone(), handler_sender.clone());
+            let automat=Automat::new_arc(properties.clone(), ipc_listener_sender.clone(), handler_sender.clone());
 
             if ipc_listener_sender.send(IpcListenerCommand::Automat(automat.clone())).is_err() {
                 panic!("Can not send Automat");
@@ -203,11 +173,10 @@ impl Handler {
     }
 
     fn lifecycle(&mut self) -> Result<(),Error> {
-        do_automat_transaction![self.automat.answer_to_balancer()];
+        ///Отвечаем Balancer-у
+        try!(self.sender.balancer_sender.send(&HandlerToBalancer::ServerStarted), Error::BalancerCrashed);
 
         self.lifecycle_handle()?;
-
-        do_automat_transaction![self.automat.shutdown()];
         self.lifecycle_shutdown()?;
 
         ok!()
@@ -241,30 +210,37 @@ impl Handler {
                 };
 
                 match command {
-                    HandlerCommand::ShutdownReceived => {info!("handler shutdown received"); return ok!();},
-                    HandlerCommand::Shutdown => unreachable!(),
-                    //Setup Crash
                     HandlerCommand::IpcListenerThreadCrash(source) => return err!(Error::IpcListenerThreadCrash, source),
                     HandlerCommand::BalancerCrash(source) => return err!(Error::BalancerCrash, source),
+                    HandlerCommand::AutomatSignal(signal) => do_automat_transaction!(self.automat.process_signal(signal)),
+                    HandlerCommand::AutomatCommand(command) => do_automat_transaction!(self.automat.send_command(command)),
+                    HandlerCommand::Shutdown => return ok!(),
                     HandlerCommand::Task => {
                         wait_tasks=false;
-                    }
-
-                    HandlerCommand::Familiarity(familiarity_servers) => {
-                        let tuple=*familiarity_servers;
-                        do_automat_transaction![self.automat.familiarize(&tuple.0, &tuple.1)];
                     },
+
+                    //From IPC Listener
+                    HandlerCommand::EstablishingConnection =>
+                        try!(self.sender.balancer_sender.send(&HandlerToBalancer::ConnectionEstablished), Error::BalancerCrashed),
                     HandlerCommand::AcceptConnection(server_type,server_id,connection_id,address,balancer_connection_id) =>
                         do_sender_transaction![self.sender.accept_connection(server_type,server_id,connection_id,address,balancer_connection_id)],
                     HandlerCommand::ConnectionAccepted(server_type,connection_id,set_connection_id) =>
                         do_sender_transaction![self.sender.connection_accepted(server_type,connection_id,set_connection_id)],
                     HandlerCommand::Connected(server_type,connection_id) =>
                         do_sender_transaction![self.sender.connected(server_type,connection_id)],
+                    HandlerCommand::EachSecond =>
+                        try!(self.sender.balancer_sender.send(&HandlerToBalancer::StillAlive), Error::BalancerCrashed),
+
+                    //From automat
+                    HandlerCommand::Familiarize(familiarity_lists) =>
+                        do_sender_transaction!(self.sender.familiarize(familiarity_lists)),
+                    HandlerCommand::FamiliarityFinished =>
+                        try!(self.sender.balancer_sender.send(&HandlerToBalancer::FamiliarityFinished), Error::BalancerCrashed),
 
                     HandlerCommand::SenderCommand(sender_command) =>
                         self.handle_sender_command(sender_command)?,
 
-                    _ => panic!("Unexpected type of HandlerCommand"),
+                    _ => panic!("Unexpected type of HandlerCommand")
                 }
             }
 
@@ -292,22 +268,16 @@ impl Handler {
         use common_messages::ToBalancerMessage;
 
         match sender_command {
-            SenderCommand::ConnectionFailed(server_type, connection_id, error) => {//TODO насколько фатально?
-                try!(self.sender.balancer_sender.send(&HandlerToBalancer::connection_failed(server_type,connection_id)), Error::BalancerCrashed);
-            },
-            SenderCommand::AcceptConnectionFailed(server_type, connection_id, error) => {
-                try!(self.sender.balancer_sender.send(&HandlerToBalancer::connection_failed(server_type,connection_id)), Error::BalancerCrashed);
-            },
-            SenderCommand::TransactionFailed(server_type, connection_id, error, basic_state) => {
-                warn!("Sender transaction failed {} {} {}", server_type, connection_id, error);
-            },
-            SenderCommand::Connected(server_type, connection_id, balancer_connection_id, via_connection_id) => {
-                info!("Connected to {} ({}) {} via {}",server_type, connection_id, balancer_connection_id, via_connection_id)
-                //TODO пока ничего не делаем
-            },
-            SenderCommand::ConnectedToAll(server_type) => {
-                do_automat_transaction![self.automat.connected_to_all()];
-            }
+            SenderCommand::ConnectionFailed(server_type, connection_id, error) => //TODO насколько фатально?
+                try!(self.sender.balancer_sender.send(&HandlerToBalancer::connection_failed(server_type,connection_id)), Error::BalancerCrashed),
+            SenderCommand::AcceptConnectionFailed(server_type, connection_id, error) =>
+                try!(self.sender.balancer_sender.send(&HandlerToBalancer::connection_failed(server_type,connection_id)), Error::BalancerCrashed),
+            SenderCommand::TransactionFailed(server_type, connection_id, error, basic_state) =>
+                warn!("Sender transaction failed {} {} {}", server_type, connection_id, error),
+            SenderCommand::Connected(server_type, connection_id, balancer_connection_id, via_connection_id) =>
+                info!("Connected to {} ({}) {} via {}",server_type, connection_id, balancer_connection_id, via_connection_id), //TODO пока ничего не делаем
+            SenderCommand::ConnectedToServers(server_type) =>
+                do_automat_transaction![self.automat.process_signal(AutomatSignal::ConnectedToServers(server_type))],
         }
 
         ok!()

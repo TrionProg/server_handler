@@ -2,7 +2,12 @@ use ipc_listener;
 use sender;
 
 use common_messages::MessageConnectionID;
-use ::{ServerType,ServerID,ConnectionID};
+use automat::{AutomatCommand,AutomatSignal};
+use sender::FamiliarityLists;
+
+use ::ServerType;
+use ::ServerID;
+use ::ConnectionID;
 use ::ThreadSource;
 
 pub enum HandlerCommand {
@@ -17,12 +22,20 @@ pub enum HandlerCommand {
     Task,
 
     //From IPC Listener
-    Familiarity(Box<(Vec<(ServerID,MessageConnectionID,String)>,Vec<(ServerID,MessageConnectionID,String)>,usize)>),
+    EstablishingConnection,
     AcceptConnection(ServerType,ServerID,ConnectionID,String,ConnectionID),
     ConnectionAccepted(ServerType,ConnectionID,ConnectionID),
     Connected(ServerType,ConnectionID),
+    EachSecond,
+
+    //From automat
+    Familiarize(Box<FamiliarityLists>),
+    FamiliarityFinished,
 
     SenderCommand(SenderCommand),
+
+    AutomatCommand(AutomatCommand),
+    AutomatSignal(AutomatSignal)
 }
 
 //From Sender
@@ -31,7 +44,7 @@ pub enum SenderCommand {
     AcceptConnectionFailed(ServerType, ConnectionID, sender::Error),
     TransactionFailed(ServerType, ConnectionID, sender::Error, sender::BasicState),
     Connected(ServerType, ConnectionID, ConnectionID, ConnectionID),
-    ConnectedToAll(ServerType)
+    ConnectedToServers(ServerType)
 }
 
 impl sender::SenderCommand for HandlerCommand{
@@ -51,7 +64,7 @@ impl sender::SenderCommand for HandlerCommand{
         HandlerCommand::SenderCommand( SenderCommand::Connected(server_type, connection_id, balancer_connection_id, via_connection_id) )
     }
 
-    fn connected_to_all(server_type:ServerType) -> Self {
-        HandlerCommand::SenderCommand( SenderCommand::ConnectedToAll(server_type) )
+    fn connected_to_servers(server_type:ServerType) -> Self {
+        HandlerCommand::SenderCommand( SenderCommand::ConnectedToServers(server_type) )
     }
 }

@@ -6,6 +6,7 @@ pub use common_sender::{SenderTrait};
 pub use common_sender::{Error,TransactionError};
 pub use common_sender::BasicState;
 pub use common_sender::SenderCommand;
+pub use common_sender::FamiliarityLists;
 use common_sender::{BalancerSender,Storage};
 
 use common_messages::HandlerToBalancer;
@@ -16,7 +17,7 @@ use std::sync::mpsc;
 
 use common_ipc_channel::IpcChannel;
 use handler::HandlerSender;
-use ::HandlerCommand;
+use handler::HandlerCommand;
 
 use ::Address;
 use ::ServerType;

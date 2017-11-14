@@ -10,12 +10,13 @@ use std::thread::JoinHandle;
 //use core
 use handler;
 use handler::HandlerSender;
-use ::HandlerCommand;
+use handler::HandlerCommand;
 use sender;
 use common_sender::SenderTrait;
 
 use common_messages::{HandlerToBalancer,BalancerToHandler};
 use common_messages::{HandlerToHandler,StorageToHandler};
+use automat::{AutomatCommand,AutomatSignal};
 
 use ::ArcProperties;
 use ::ArcTasksQueue;
@@ -30,23 +31,11 @@ const BUFFER_SIZE:usize = 32*1024;
 const READ_TIMEOUT:isize = 50;
 //const RECV_IPC_LISTENER_RECEIVER_INTERVAL:Duration=Duration::new(1,0); //TODO const fn
 
+use super::Error;
+use super::IpcListenerCommand;
+
 pub type IpcListenerSender = std::sync::mpsc::Sender<IpcListenerCommand>;
 pub type IpcListenerReceiver = std::sync::mpsc::Receiver<IpcListenerCommand>;
-
-pub enum IpcListenerCommand {
-    HandlerThreadCrash(ThreadSource),
-    BalancerCrash(ThreadSource),
-
-    HandlerSender(HandlerSender),
-    TasksQueue(ArcTasksQueue),
-    Sender(ArcSender),
-    Automat(ArcAutomat),
-    SenderCreationError,
-    HandlerSetupError(Box<handler::Error>),
-    HandlerIsReady,
-    Shutdown,
-    HandlerFinished
-}
 
 pub struct IpcListener {
     ipc_listener_receiver:IpcListenerReceiver,
@@ -58,27 +47,6 @@ pub struct IpcListener {
     socket:nanomsg::Socket,
     endpoint:nanomsg::Endpoint,
 }
-
-
-define_error!( Error,
-    HandlerThreadCrash(thread_source:ThreadSource) =>
-        "[Source:{1}] Handler thread has finished incorrecty(crashed)",
-    BalancerCrash(thread_source:ThreadSource) =>
-        "[Source:{1}] Balancer server has crashed",
-    BalancerCrashed(sender_error:Box<sender::Error>) =>
-        "Balancer server has crashed: {1}",
-
-    NanomsgError(nanomsg_error:Box<nanomsg::result::Error>) =>
-        "Nanomsg error: {}",
-    IOError(io_error:Box<std::io::Error>) =>
-        "IO Error: {}",
-    BrockenChannel() =>
-        "Ipc Listener thread has poisoned mutex",
-    MutexPoisoned() =>
-        "Ipc Listener thread has poisoned mutex",
-    Other(message:String) =>
-        "{}"
-);
 
 impl IpcListener {
     pub fn start(properties: ArcProperties) -> (JoinHandle<()>,IpcListenerSender) {
@@ -237,6 +205,7 @@ impl IpcListener {
 
                 //recv_ipc_listener_receiver_time=now+RECV_IPC_LISTENER_RECEIVER_INTERVAL;
                 recv_ipc_listener_receiver_time=now+Duration::new(1,0);
+                channel_send!(self.handler_sender, HandlerCommand::EachSecond);
             }
 
             //Read IPC
@@ -250,13 +219,7 @@ impl IpcListener {
                             trace!("BalancerToHandler message {}",connection_id);
                             let message = common_messages::read_message( &buffer[..] );
 
-                            match message {
-                                BalancerToHandler::Shutdown => {
-                                    channel_send!(self.handler_sender, HandlerCommand::ShutdownReceived);
-                                    return ok!();
-                                },
-                                _ => self.handle_balancer_message(connection_id,time,number,message)?
-                            }
+                            self.handle_balancer_message(connection_id,time,number,message)?
                         },
                         common_messages::Type::StorageToHandler => {
                             trace!("StorageToHandler message {}",connection_id);
@@ -268,10 +231,8 @@ impl IpcListener {
                             let message = common_messages::read_message( &buffer[..] );
                             self.handle_handler_message(connection_id,time,number,message)?;
                         },
-                        _ => {
-                            warn!("Unexpected type of message {:?}", message_type);
-                            panic!("Unexpected type of message {:?}", message_type);
-                        },
+                        _ =>
+                            panic!("Unexpected type of message {:?}", message_type),
                     }
                 },
                 Err(e) => {
@@ -300,13 +261,22 @@ impl IpcListener {
 
     fn handle_balancer_message(&mut self, connection_id:ConnectionID, time:u64, number:u32, message:BalancerToHandler) -> Result<(),Error> {
         match message {
-            BalancerToHandler::EstablishingConnection => {
-                try!(self.sender.balancer_sender.send(&HandlerToBalancer::ConnectionEstablished), Error::BalancerCrashed);
+            BalancerToHandler::EstablishingConnection =>
+                channel_send!(self.handler_sender, HandlerCommand::EstablishingConnection ),
+            BalancerToHandler::Familiarity{storages,handlers} => {
+                let familiarity_lists=sender::FamiliarityLists::new(storages,handlers);
+                let command=HandlerCommand::AutomatSignal(AutomatSignal::Familiarize(Box::new(familiarity_lists)));
+                channel_send!(self.handler_sender, command );
             },
-            BalancerToHandler::Familiarity{storages, handlers} =>
-                channel_send!(self.handler_sender, HandlerCommand::Familiarity(Box::new((storages, handlers,0))) ),
-            BalancerToHandler::Shutdown => unreachable!(),
-            _ => {},
+            BalancerToHandler::Shutdown(restart) => {
+                let restart=if restart==0 {false} else {true};
+                channel_send!(self.handler_sender, HandlerCommand::AutomatCommand(AutomatCommand::Shutdown(restart)) );
+            },
+            //BalancerToStorage::GenerateMap(map_name) =>
+            //    do_automat_transaction![self.automat.generate_map(map_name)],
+            BalancerToHandler::Defrost =>
+                info!("defrost"),
+            _ => unimplemented!(),
         }
 
         ok!()
