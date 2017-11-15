@@ -345,11 +345,14 @@ impl InnerAutomat {
                 State::Working(working_state) => {
                     match working_state {
                         WorkingState::MapGeneration => {
+                            debug!("Map generated");
                             self.state = State::Working(WorkingState::MapIsReady);
+                            self.state = State::Working(WorkingState::Playing);//TODO
                             channel_send!(self.handler_sender, HandlerCommand::MapGenerated, TransactionError);
                             self.process_next_command()?;
                         },
                         WorkingState::MapClosing => {
+                            debug!("Map closed");
                             self.state = State::Working(WorkingState::Nope);
                             channel_send!(self.handler_sender, HandlerCommand::MapClosed, TransactionError);
                             self.process_next_command()?;

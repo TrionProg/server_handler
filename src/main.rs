@@ -46,8 +46,8 @@ pub use self::sender::{Sender,ArcSender};
 
 #[derive(Debug,Copy,Clone,Eq,PartialEq)]
 pub enum ThreadSource{
-    IpcListener,
-    Handler,
+    IpcListener=0,
+    Handler=1,
 }
 
 impl std::fmt::Display for ThreadSource{

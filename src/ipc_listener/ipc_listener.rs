@@ -278,8 +278,10 @@ impl IpcListener {
                 let restart=if restart==0 {false} else {true};
                 channel_send!(self.handler_sender, HandlerCommand::AutomatCommand(AutomatCommand::Shutdown(restart)) );
             },
-            //BalancerToStorage::GenerateMap(map_name) =>
-            //    do_automat_transaction![self.automat.generate_map(map_name)],
+            BalancerToHandler::GenerateMap(map_name) =>
+                channel_send!(self.handler_sender, HandlerCommand::AutomatCommand(AutomatCommand::GenerateMap(map_name)) ),
+            BalancerToHandler::CloseMap =>
+                channel_send!(self.handler_sender, HandlerCommand::AutomatCommand(AutomatCommand::CloseMap) ),
             BalancerToHandler::Defrost =>
                 info!("defrost"),
             _ => unimplemented!(),
