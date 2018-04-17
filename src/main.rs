@@ -21,6 +21,7 @@ extern crate common_macros;
 
 pub use common_address::Address;
 pub use common_types::{ServerType,ServerID,ConnectionID};
+pub use common_types::{ResourceType,ResourceID};
 
 pub mod properties;
 pub use properties::{Argument,Properties,ArcProperties};

@@ -13,9 +13,10 @@ define_error!( Error,
         "Balancer server has crashed: {1}",
 
     BrockenChannel() =>
-        "Channel for Handler is broken",
+        "Broken channel",
     Poisoned() =>
-        "Handler thread has poisoned mutex",
+        "Mutex has been poisoned",
+
     Other(message:String) =>
         "{}"
 );

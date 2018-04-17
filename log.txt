@@ -1,0 +1,76 @@
+LOGGERHEAD[Info ] 0 (Balancer #1) : Start Storages
+[Info ] 0 (Storage #1) : Connected to Storage ((slot index:0, unique id:1)) (slot index:1, unique id:2) via (slot index:0, unique id:1)
+[Info ] 0 (Balancer #1) : storage famil finished (slot index:1, unique id:2)
+[Info ] 0 (Balancer #1) : (slot index:1, unique id:2) is Workable
+[Info ] 0 (Balancer #1) : storage famil finished (slot index:0, unique id:1)
+[Info ] 0 (Balancer #1) : (slot index:0, unique id:1) is Workable
+[Info ] 0 (Balancer #1) : Start Handlers
+[Info ] 0 (Handler #1) : Hello
+[Info ] 0 (Handler #1) : Connected to Storage ((slot index:0, unique id:1)) (slot index:0, unique id:1) via (slot index:0, unique id:1)
+[Info ] 0 (Handler #1) : Connected to Storage ((slot index:1, unique id:2)) (slot index:1, unique id:2) via (slot index:0, unique id:1)
+[Info ] 0 (Handler #2) : Hello
+[Info ] 0 (Balancer #1) : handler famil finished (slot index:0, unique id:1)
+[Info ] 0 (Balancer #1) : (slot index:0, unique id:1) is Workable
+[Info ] 0 (Handler #2) : Connected to Handler ((slot index:0, unique id:1)) (slot index:0, unique id:1) via (slot index:0, unique id:1)
+[Info ] 0 (Handler #2) : Connected to Storage ((slot index:0, unique id:1)) (slot index:0, unique id:1) via (slot index:1, unique id:2)
+[Info ] 0 (Handler #2) : Connected to Storage ((slot index:1, unique id:2)) (slot index:1, unique id:2) via (slot index:1, unique id:2)
+[Info ] 0 (Balancer #1) : handler famil finished (slot index:1, unique id:2)
+[Info ] 0 (Balancer #1) : (slot index:1, unique id:2) is Workable
+[Info ] 0 (Balancer #1) :
+ WORKING
+
+[Info ] 0 (Balancer #1) : Generating map "map1"
+[Debug] 0 (Balancer #1) : Storage 0 generate map "map1"
+[Debug] 0 (Balancer #1) : Storage 1 generate map "map1"
+[Debug] 0 (Storage #1) : Creating map "map1"
+[Debug] 0 (Storage #2) : Creating map "map1"
+[Debug] 0 (Storage #1) : Map created
+[Debug] 0 (Storage #2) : Map created
+[Debug] 0 (Balancer #1) : Handler 0 generate map "map1"
+[Debug] 0 (Balancer #1) : Handler 1 generate map "map1"
+[Debug] 0 (Handler #1) : Generating map "map1"
+[Debug] 0 (Handler #2) : Generating map "map1"
+[Info ] 0 (Handler #1) : Created 0
+[Info ] 0 (Handler #2) : Created 1
+[Debug] 0 (Handler #1) : Map generated
+[Debug] 0 (Handler #2) : Map generated
+[Info ] 0 (Balancer #1) : Map has been generated
+[Info ] 0 (Storage #1) : Create Block Unknown #0 on server #0 (15, 0, 0:0)
+[Info ] 0 (Storage #1) : Create segment Unknown #1 on server #0 (15, 0, 0:32766)
+[Trace] 0 (Balancer #1) : SHUTDOWN
+[Info ] 0 (Balancer #1) : Closing map
+[Debug] 0 (Balancer #1) : Handler 0 close map
+[Debug] 0 (Balancer #1) : Handler 1 close map
+[Debug] 0 (Handler #1) : Closing map
+[Debug] 0 (Handler #2) : Closing map
+[Debug] 0 (Handler #2) : Map closed
+[Debug] 0 (Handler #1) : Map closed
+[Debug] 0 (Balancer #1) : Storage 0 close map
+[Debug] 0 (Balancer #1) : Storage 1 close map
+[Debug] 0 (Storage #2) : Closing map
+[Debug] 0 (Storage #1) : Closing map
+[Debug] 0 (Storage #2) : Map closed
+[Debug] 0 (Storage #1) : Map closed
+[Info ] 0 (Balancer #1) : Map has been closed
+[Info ] 0 (Balancer #1) : Shutdown Handlers
+[Info ] 0 (Handler #2) : handler ipc finish
+[Info ] 0 (Handler #1) : handler ipc finish
+[Info ] 0 (Handler #2) : Shutdown
+[Info ] 0 (Handler #1) : Shutdown
+[Info ] 0 (Balancer #1) : Remove Handler (slot index:0, unique id:1)
+[Info ] 0 (Balancer #1) : Remove Handler (slot index:1, unique id:2)
+[Info ] 0 (Balancer #1) : Shutdown Storages
+[Info ] 0 (Storage #1) : storage ipc finish
+[Info ] 0 (Storage #1) : storage disk finish
+[Info ] 0 (Storage #2) : storage ipc finish
+[Info ] 0 (Storage #2) : storage disk finish
+[Info ] 0 (Storage #1) : Finished
+[Info ] 0 (Storage #1) : Shutdown
+[Info ] 0 (Storage #2) : Finished
+[Info ] 0 (Storage #2) : Shutdown
+[Trace] 0 (Balancer #1) : SHUTDOWN
+[Info ] 0 (Balancer #1) : Remove Storage (slot index:0, unique id:1)
+[Info ] 0 (Balancer #1) : Remove Storage (slot index:1, unique id:2)
+[Trace] 0 (Balancer #1) : aaa
+[Debug] 0 (Balancer #1) : ipclistener shutdown
+[Info ] 0 (Balancer #1) : Shutdown 

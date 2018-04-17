@@ -26,6 +26,7 @@ use ::ThreadSource;
 use ::ServerType;
 use ::ConnectionID;
 use ::ServerID;
+use ::ResourceID;
 
 const BUFFER_SIZE:usize = 32*1024;
 const READ_TIMEOUT:isize = 50;
@@ -222,18 +223,15 @@ impl IpcListener {
 
                     match message_type {
                         common_messages::Type::BalancerToHandler => {
-                            trace!("BalancerToHandler message {}",connection_id);
                             let message = common_messages::read_message( &buffer[..] );
 
                             self.handle_balancer_message(connection_id,time,number,message)?
                         },
                         common_messages::Type::StorageToHandler => {
-                            trace!("StorageToHandler message {}",connection_id);
                             let message = common_messages::read_message( &buffer[..] );
                             self.handle_storage_message(connection_id,time,number,message)?;
                         },
                         common_messages::Type::HandlerToHandler => {
-                            trace!("HandlerToHandler message {}",connection_id);
                             let message = common_messages::read_message( &buffer[..] );
                             self.handle_handler_message(connection_id,time,number,message)?;
                         },
@@ -298,6 +296,18 @@ impl IpcListener {
                 channel_send!(self.handler_sender, HandlerCommand::ConnectionAccepted(ServerType::Storage, connection_id, set_connection_id.into())),
             StorageToHandler::Connected =>
                 channel_send!(self.handler_sender, HandlerCommand::Connected(ServerType::Storage, connection_id)),
+            StorageToHandler::ResourceCreated(resource_id_code) => {
+                let resource_id=ResourceID::from(resource_id_code);
+                info!("Created {}",resource_id);
+
+                use common_sender::StorageTrait;
+                //let message=::common_messages::HandlerToStorage::DeleteResource(resource_id.code());
+                //self.sender.storages.send(ConnectionID::new(0,1),0,&message).unwrap();
+            },
+            StorageToHandler::Resource(resource_id_code, data) => {
+                let resource_id=ResourceID::from(resource_id_code);
+                info!("Resource {}",resource_id);
+            }
         }
 
         ok!()

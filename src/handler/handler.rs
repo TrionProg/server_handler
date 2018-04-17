@@ -241,6 +241,11 @@ impl Handler {
                         self.handle_sender_command(sender_command)?,
 
                     HandlerCommand::GenerateMap(map_name) => {
+                        use common_sender::StorageTrait;
+                        let message=::common_messages::HandlerToStorage::CreateResource(0, vec![1,2,3]);
+                        do_sender_transaction!( self.sender.storages.send(ConnectionID::new(0,1),0,&message) );
+                        let message=::common_messages::HandlerToStorage::CreateResource(0, vec![1;1000]);
+                        do_sender_transaction!( self.sender.storages.send(ConnectionID::new(0,1),0,&message) );
                         //self.resource_heap.create_map(map_name)?;
                         do_automat_transaction![self.automat.process_signal(AutomatSignal::ThreadIsReady(ThreadSource::Handler))];
                     },
